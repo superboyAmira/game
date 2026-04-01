@@ -89,7 +89,7 @@
   </div>
   <div class="ui-overlay top-bar">
     <div class="score-bar">
-      Капсулы: <strong><span id="score">0</span></strong> / <strong><span id="total">6</span></strong>
+      Утки: <strong><span id="score">0</span></strong> / <strong><span id="total">6</span></strong>
     </div>
     <a href="start.html" class="back-link clickable">← Старт</a>
   </div>
@@ -120,8 +120,8 @@
     arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
   >
     <a-assets timeout="10000">
-      <img id="groundTex" src="assets/space-floor.svg">
-      <img id="skyTex" src="assets/starfield.svg">
+      <img id="groundTex" src="assets/forest-floor.jpg">
+      <img id="skyTex" src="assets/forest-sky.jpg">
       <audio id="collectSound" src="https://cdn.aframe.io/aframe/examples/primitives/click.ogg" preload="auto"></audio>
       <audio id="loseSound" src="https://cdn.aframe.io/basic-guide/audio/backgroundnoise.wav" preload="auto"></audio>
       <audio id="winSound" src="https://cdn.aframe.io/360-image-gallery-boilerplate/audio/click.ogg" preload="auto"></audio>
@@ -147,29 +147,30 @@
       <a-light type="directional" position="6 9 3" intensity="0.9" color="#ffffff"></a-light>
       <a-light type="point" position="0 6 0" intensity="0.7" color="#7fd3ff"></a-light>
 
+      <a-entity
+        geometry="primitive: plane; width: 24; height: 24"
+        material="src: #groundTex; repeat: 6 6; roughness: 1; metalness: 0.05; opacity: 0.92"
+        position="0 0 0"
+        rotation="-90 0 0"
+      ></a-entity>
+      <a-entity
+        geometry="primitive: ring; radiusInner: 7.9; radiusOuter: 8.8"
+        material="color: #fde68a; opacity: 0.18; transparent: true; side: double"
+        position="0 0.02 0"
+        rotation="-90 0 0"
+      ></a-entity>
+
       <a-entity id="world-capsules"></a-entity>
 
       <a-entity id="drones-orbit" position="0 0 0" animation="property: rotation; to: 0 360 0; loop: true; dur: 22000; easing: linear">
         <a-entity class="drone-avoid" scale="2.22 2.22 2.22" position="0 0.5 -5">
-          <a-sphere radius="0.55" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
-          <a-sphere radius="0.24" color="#ff7b54" metalness="0.35" roughness="0.35"></a-sphere>
-          <a-box width="1.05" height="0.1" depth="0.18" color="#f97316"></a-box>
-          <a-box width="0.18" height="0.1" depth="1.05" color="#f97316"></a-box>
-          <a-ring radius-inner="0.08" radius-outer="0.18" color="#ffe066" rotation="-90 0 0" position="0 0.2 0" animation="property: rotation; to: -90 360 0; loop: true; dur: 700; easing: linear"></a-ring>
+          <a-sphere radius="0.35" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
         </a-entity>
         <a-entity class="drone-avoid" scale="2.22 2.22 2.22" position="4.33 0.5 2.5">
-          <a-sphere radius="0.55" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
-          <a-sphere radius="0.24" color="#fb7185" metalness="0.35" roughness="0.35"></a-sphere>
-          <a-box width="1.05" height="0.1" depth="0.18" color="#ef4444"></a-box>
-          <a-box width="0.18" height="0.1" depth="1.05" color="#ef4444"></a-box>
-          <a-ring radius-inner="0.08" radius-outer="0.18" color="#fde68a" rotation="-90 0 0" position="0 0.2 0" animation="property: rotation; to: -90 -360 0; loop: true; dur: 700; easing: linear"></a-ring>
+          <a-sphere radius="0.35" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
         </a-entity>
         <a-entity class="drone-avoid" scale="2.22 2.22 2.22" position="-4.33 0.5 2.5">
-          <a-sphere radius="0.55" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
-          <a-sphere radius="0.24" color="#f87171" metalness="0.35" roughness="0.35"></a-sphere>
-          <a-box width="1.05" height="0.1" depth="0.18" color="#dc2626"></a-box>
-          <a-box width="0.18" height="0.1" depth="1.05" color="#dc2626"></a-box>
-          <a-ring radius-inner="0.08" radius-outer="0.18" color="#fde68a" rotation="-90 0 0" position="0 0.2 0" animation="property: rotation; to: -90 360 0; loop: true; dur: 620; easing: linear"></a-ring>
+          <a-sphere radius="0.35" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
         </a-entity>
       </a-entity>
     </a-entity>
@@ -203,18 +204,78 @@
       if (timerEl) timerEl.textContent = GAME_DURATION + " с";
       startTimer();
 
-      function makeCapsule(container) {
-        if (glbLoaded) {
-          var slot = el.querySelector(".capsule-gltf");
-          var vis = el.querySelector(".capsule-visual");
-          if (slot) {
-            slot.setAttribute("visible", "true");
-            slot.setAttribute("gltf-model", "url(assets/duck_collectible.glb)");
-            slot.addEventListener("model-loaded", function () {
-              if (vis) vis.setAttribute("visible", "false");
-            }, { once: true });
-          }
+      function applyCapsuleModel(el) {
+        var slot = el.querySelector(".capsule-gltf");
+        var vis = el.querySelector(".capsule-visual");
+        if (slot) {
+          slot.setAttribute("visible", "true");
+          slot.setAttribute("gltf-model", "url(assets/duck_collectible.glb)");
+          slot.addEventListener("model-loaded", function () {
+            if (vis) vis.setAttribute("visible", "false");
+          }, { once: true });
         }
+      }
+
+      function makeCapsule(container) {
+        if (!container || gameEnded) return null;
+
+        capsuleCount += 1;
+        var angle = Math.random() * Math.PI * 2;
+        var radius = 2.6 + Math.random() * 4.4;
+        var height = 0.7 + Math.random() * 0.45;
+        var x = Math.cos(angle) * radius;
+        var z = Math.sin(angle) * radius;
+
+        var el = document.createElement("a-entity");
+        el.setAttribute("id", "capsule-" + capsuleCount);
+        el.setAttribute("class", "capsule-collect");
+        el.setAttribute("position", x.toFixed(2) + " " + height.toFixed(2) + " " + z.toFixed(2));
+        el.setAttribute(
+          "animation__float",
+          "property: position; to: " + x.toFixed(2) + " " + (height + 0.28).toFixed(2) + " " + z.toFixed(2) + "; dir: alternate; loop: true; dur: 2100; easing: easeInOutSine"
+        );
+        el.setAttribute(
+          "animation__spin",
+          "property: rotation; to: 0 360 0; loop: true; dur: 3200; easing: linear"
+        );
+
+        var hitArea = document.createElement("a-sphere");
+        hitArea.setAttribute("radius", "0.48");
+        hitArea.setAttribute("material", "opacity: 0.001; transparent: true");
+        hitArea.setAttribute("class", "hit-area");
+        el.appendChild(hitArea);
+
+        var fallback = document.createElement("a-entity");
+        fallback.setAttribute("class", "capsule-visual");
+
+        var body = document.createElement("a-sphere");
+        body.setAttribute("radius", "0.24");
+        body.setAttribute("material", "color: #facc15; emissive: #fde047; emissiveIntensity: 0.45");
+        fallback.appendChild(body);
+
+        var halo = document.createElement("a-ring");
+        halo.setAttribute("radius-inner", "0.32");
+        halo.setAttribute("radius-outer", "0.42");
+        halo.setAttribute("rotation", "-90 0 0");
+        halo.setAttribute("material", "color: #fef08a; side: double");
+        halo.setAttribute("position", "0 0 0");
+        fallback.appendChild(halo);
+
+        el.appendChild(fallback);
+
+        var slot = document.createElement("a-entity");
+        slot.setAttribute("class", "capsule-gltf");
+        slot.setAttribute("visible", "false");
+        slot.setAttribute("scale", "0.65 0.65 0.65");
+        el.appendChild(slot);
+
+        container.appendChild(el);
+
+        if (glbLoaded) {
+          applyCapsuleModel(el);
+        }
+
+        return el;
       }
 
       function hideLoader() {
@@ -285,6 +346,29 @@
           cur = cur.parentNode;
         }
         return null;
+      }
+
+      function setupDroneModels() {
+        fetch("assets/fox_hazard.glb", { cache: "no-store" })
+          .then(function (r) {
+            if (!r.ok) {
+              throw new Error("not found");
+            }
+            document.querySelectorAll(".drone-avoid").forEach(function (drone) {
+              if (drone.querySelector(".drone-gltf")) {
+                return;
+              }
+
+              var model = document.createElement("a-entity");
+              model.setAttribute("class", "drone-gltf");
+              model.setAttribute("gltf-model", "url(assets/fox_hazard.glb)");
+              model.setAttribute("position", "0 -0.3 0");
+              model.setAttribute("scale", "0.05 0.05 0.05");
+              model.setAttribute("rotation", "0 180 0");
+              drone.appendChild(model);
+            });
+          })
+          .catch(function () {});
       }
 
       function collectCapsule(capsule) {
@@ -391,6 +475,7 @@
       scene.addEventListener("loaded", function () {
         updateScore();
         setupPointerHandler();
+        setupDroneModels();
 
         worldCapsulesContainer = document.getElementById("world-capsules");
         if (worldCapsulesContainer) {
@@ -417,15 +502,7 @@
             if (!r.ok) throw new Error("not found");
             glbLoaded = true;
             document.querySelectorAll(".capsule-collect").forEach(function (cap) {
-              var gltf = cap.querySelector(".capsule-gltf");
-              var visual = cap.querySelector(".capsule-visual");
-              if (gltf) {
-                gltf.setAttribute("visible", "true");
-                gltf.setAttribute("gltf-model", "url(assets/duck_collectible.glb)");
-                gltf.addEventListener("model-loaded", function () {
-                  if (visual) visual.setAttribute("visible", "false");
-                }, { once: true });
-              }
+              applyCapsuleModel(cap);
             });
           })
           .catch(function () {});
