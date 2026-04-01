@@ -6,12 +6,30 @@
   <title>Duck Rescue AR</title>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/aframe-physics-system@4.0.2/dist/aframe-physics-system.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.7/aframe/build/aframe-ar.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; overflow: hidden; background: #0a0a0f; touch-action: manipulation; }
     a-scene { touch-action: none; }
-    #ar-scene { visibility: hidden; }
+    #camera-feed,
+    #ar-scene {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #camera-feed {
+      z-index: 0;
+      object-fit: cover;
+      background: #000;
+      visibility: hidden;
+    }
+    #ar-scene {
+      z-index: 1;
+      visibility: hidden;
+    }
+    #ar-scene canvas {
+      background: transparent !important;
+    }
     .arjs-loader {
       position: absolute; inset: 0; z-index: 9999;
       display: flex; justify-content: center; align-items: center; flex-direction: column;
@@ -118,9 +136,11 @@
   </style>
 </head>
 <body>
+  <video id="camera-feed" autoplay muted playsinline webkit-playsinline="true"></video>
+
   <div class="arjs-loader" id="loader">
     <h2>Duck Rescue AR</h2>
-    <p id="loader-msg">Сначала разрешите камеру браузеру. Игра начнется только после доступа к микрофону, геолокации и датчикам устройства.</p>
+    <p id="loader-msg">Нажмите кнопку ниже и подтвердите камеру, микрофон, геолокацию и датчики. Таймер начнется только после полной готовности сцены.</p>
     <div class="permission-status">
       <div class="permission-row"><span>Камера</span><span class="permission-value is-pending" id="perm-camera">ожидание</span></div>
       <div class="permission-row"><span>Микрофон</span><span class="permission-value is-pending" id="perm-microphone">ожидание</span></div>
@@ -128,7 +148,7 @@
       <div class="permission-row"><span>Датчики</span><span class="permission-value is-pending" id="perm-sensors">ожидание</span></div>
       <div class="permission-row"><span>AR-камера</span><span class="permission-value is-pending" id="perm-ar">ожидание</span></div>
     </div>
-    <button type="button" class="permission-button" id="permission-button">Разрешить остальные доступы и начать</button>
+    <button type="button" class="permission-button" id="permission-button">Разрешить доступы и начать</button>
     <p class="permission-error" id="permission-error"></p>
     <p style="font-size: 13px;">На iPhone сцена работает через камеру и гироскоп. Пол убран, объекты висят в пространстве вокруг точки старта.</p>
     <p><a href="start.html">← Старт</a></p>
@@ -165,11 +185,11 @@
 
   <a-scene
     id="ar-scene"
+    embedded
     vr-mode-ui="enabled: false"
     renderer="antialias: true; alpha: true"
     physics="driver: cannon; gravity: 0"
     device-orientation-permission-ui="enabled: false"
-    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
   >
     <a-assets timeout="10000">
       <audio id="collectSound" src="https://cdn.aframe.io/aframe/examples/primitives/click.ogg" preload="auto"></audio>
@@ -230,6 +250,7 @@
       var gameWinEl = document.getElementById("game-win");
       var finalScoreLose = document.getElementById("final-score-lose");
       var scene = document.getElementById("ar-scene");
+      var cameraFeed = document.getElementById("camera-feed");
       var camera = document.getElementById("ar-camera");
       var rulesTextEl = document.querySelector(".rules-text");
       var gameOverReasonEl = document.getElementById("game-over-reason");
@@ -247,7 +268,8 @@
       var gameStarted = false;
       var permissionsGranted = false;
       var permissionRequestInFlight = false;
-      var arSourceReady = false;
+      var cameraReady = false;
+      var cameraStream = null;
       var sceneLoaded = false;
       var watchId = null;
       var capsuleCount = 0;
@@ -292,48 +314,6 @@
         markAllPermissionsUnavailable();
         return;
       }
-
-      function handleCameraInit() {
-        updatePermissionState("camera", "ok", "Разрешена");
-      }
-
-      function handleCameraError() {
-        updatePermissionState("camera", "error", "Ошибка");
-        updatePermissionState("ar", "error", "Ошибка");
-        setLoaderMessage("Не удалось получить доступ к камере.");
-        setPermissionError("Разрешите камеру для сайта и перезагрузите страницу.");
-        setPermissionButtonState(false, "Камера недоступна");
-      }
-
-      function handleArSourceReady() {
-        arSourceReady = true;
-        scene.style.visibility = "visible";
-        updatePermissionState("camera", "ok", "Разрешена");
-        updatePermissionState("ar", "ok", "Готово");
-        setLoaderMessage("AR-камера активна. Поворачивайте телефон, чтобы осмотреть сцену.");
-        if (!permissionsGranted && !permissionRequestInFlight) {
-          setPermissionButtonState(false, "Разрешить остальные доступы и начать");
-        }
-        refreshLookControls();
-        startGameIfReady();
-      }
-
-      window.addEventListener("camera-init", handleCameraInit);
-      window.addEventListener("camera-error", handleCameraError);
-      window.addEventListener("arjs-source-ready", handleArSourceReady);
-      if (scene) {
-        scene.addEventListener("camera-init", handleCameraInit);
-        scene.addEventListener("camera-error", handleCameraError);
-        scene.addEventListener("arjs-source-ready", handleArSourceReady);
-      }
-
-      window.addEventListener("arjs-error", function () {
-        updatePermissionState("ar", "error", "Ошибка");
-        setLoaderMessage("Не удалось запустить AR-камеру.");
-        setPermissionError("Проверьте доступ к камере и перезагрузите страницу.");
-        setPermissionButtonState(false, "Повторить запрос");
-        permissionRequestInFlight = false;
-      });
 
       function setLoaderMessage(text) {
         if (loaderMsg) loaderMsg.textContent = text;
@@ -438,6 +418,89 @@
         });
       }
 
+      function stopMediaStream(stream) {
+        var tracks = stream ? stream.getTracks() : [];
+        for (var i = 0; i < tracks.length; i++) {
+          tracks[i].stop();
+        }
+      }
+
+      function stopCameraStream() {
+        if (cameraStream) {
+          stopMediaStream(cameraStream);
+          cameraStream = null;
+        }
+        cameraReady = false;
+        if (cameraFeed) {
+          if (cameraFeed.pause) cameraFeed.pause();
+          cameraFeed.srcObject = null;
+          cameraFeed.style.visibility = "hidden";
+        }
+      }
+
+      function waitForVideoReady(video) {
+        return new Promise(function (resolve, reject) {
+          if (!video) {
+            reject(new Error("Видеоэлемент камеры не найден."));
+            return;
+          }
+          if (video.readyState >= 2 && video.videoWidth > 0) {
+            resolve();
+            return;
+          }
+
+          var done = false;
+          function cleanup() {
+            video.removeEventListener("loadedmetadata", onReady);
+            video.removeEventListener("canplay", onReady);
+            video.removeEventListener("playing", onReady);
+            video.removeEventListener("error", onError);
+          }
+          function onReady() {
+            if (done) return;
+            done = true;
+            cleanup();
+            resolve();
+          }
+          function onError() {
+            if (done) return;
+            done = true;
+            cleanup();
+            reject(new Error("Видео с камеры не запустилось."));
+          }
+
+          video.addEventListener("loadedmetadata", onReady);
+          video.addEventListener("canplay", onReady);
+          video.addEventListener("playing", onReady);
+          video.addEventListener("error", onError);
+        });
+      }
+
+      function normalizeCameraError(error) {
+        if (!error) return "Не удалось запустить камеру.";
+        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+          return "Разрешите доступ к камере.";
+        }
+        if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+          return "Камера на устройстве не найдена.";
+        }
+        if (error.name === "NotReadableError" || error.name === "TrackStartError") {
+          return "Камера занята другим приложением. Закройте его и повторите.";
+        }
+        return error.message || "Не удалось запустить камеру.";
+      }
+
+      function normalizeMicrophoneError(error) {
+        if (!error) return "Разрешите доступ к микрофону.";
+        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+          return "Разрешите доступ к микрофону.";
+        }
+        if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+          return "Микрофон на устройстве не найден.";
+        }
+        return error.message || "Разрешите доступ к микрофону.";
+      }
+
       function requestPermissionsAndStart() {
         if (permissionRequestInFlight || permissionsGranted) return;
         if (!scene || !scene.hasLoaded) {
@@ -447,18 +510,20 @@
 
         permissionRequestInFlight = true;
         setPermissionError("");
-        setLoaderMessage("Подтвердите все запросы браузера. Игра стартует только после полной готовности сцены.");
+        setLoaderMessage("Подтвердите все запросы браузера. Игра стартует только после готовности камеры и сцены.");
         setPermissionButtonState(true, "Запрашиваем разрешения...");
+        updatePermissionState("camera", "pending", "Запрашиваем");
         updatePermissionState("microphone", "pending", "Запрашиваем");
         updatePermissionState("geolocation", "pending", "Запрашиваем");
         updatePermissionState("sensors", "pending", "Запрашиваем");
-        if (!arSourceReady) {
-          updatePermissionState("ar", "pending", "Ждем камеру");
-        }
+        updatePermissionState("ar", "pending", "Ждём видео");
 
         requestSensorPermissions()
           .then(function () {
             refreshLookControls();
+            return requestCameraPermission();
+          })
+          .then(function () {
             return requestMicrophonePermission();
           })
           .then(requestGeolocationPermission)
@@ -467,12 +532,8 @@
             permissionRequestInFlight = false;
             startGpsWatch();
             refreshLookControls();
-            if (!arSourceReady) {
-              setLoaderMessage("Доступы получены. Ждём запуска AR-камеры...");
-              setPermissionButtonState(true, "Ждём AR-камеру...");
-            } else {
-              setPermissionButtonState(true, "Запускаем игру...");
-            }
+            setLoaderMessage("Все доступы получены. Запускаем сцену.");
+            setPermissionButtonState(true, "Запускаем игру...");
             startGameIfReady();
           })
           .catch(function (error) {
@@ -505,10 +566,84 @@
             }
           }
           updatePermissionState("sensors", "ok", "Разрешены");
+          window.dispatchEvent(new CustomEvent("deviceorientationpermissiongranted"));
+          if (scene) scene.emit("deviceorientationpermissiongranted");
         }, function () {
           updatePermissionState("sensors", "error", "Запрещено");
           throw new Error("Разрешите доступ к датчикам устройства.");
         });
+      }
+
+      function requestCameraPermission() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          updatePermissionState("camera", "error", "Нет API");
+          updatePermissionState("ar", "error", "Нет API");
+          return Promise.reject(new Error("Браузер не поддерживает доступ к камере."));
+        }
+
+        if (cameraReady && cameraStream) {
+          updatePermissionState("camera", "ok", "Разрешена");
+          updatePermissionState("ar", "ok", "Готова");
+          return Promise.resolve();
+        }
+
+        return withTimeout(
+          navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          }),
+          15000,
+          "Safari не подтвердил доступ к камере. Повторите запрос."
+        )
+          .then(function (stream) {
+            stopCameraStream();
+            cameraStream = stream;
+
+            if (!cameraFeed) {
+              throw new Error("Видеоэлемент камеры не найден.");
+            }
+
+            cameraFeed.muted = true;
+            cameraFeed.autoplay = true;
+            cameraFeed.setAttribute("playsinline", "true");
+            cameraFeed.setAttribute("webkit-playsinline", "true");
+            cameraFeed.srcObject = stream;
+            cameraFeed.style.visibility = "visible";
+
+            updatePermissionState("camera", "ok", "Разрешена");
+            updatePermissionState("ar", "pending", "Запускаем");
+            setLoaderMessage("Камера включена. Подтвердите оставшиеся запросы браузера.");
+
+            var playPromise = cameraFeed.play();
+            if (playPromise && typeof playPromise.catch === "function") {
+              playPromise = playPromise.catch(function () {});
+            }
+
+            return Promise.resolve(playPromise).then(function () {
+              return withTimeout(
+                waitForVideoReady(cameraFeed),
+                8000,
+                "Камера не начала показывать изображение. Перезагрузите страницу и повторите."
+              );
+            });
+          })
+          .then(function () {
+            cameraReady = true;
+            if (scene) scene.style.visibility = "visible";
+            updatePermissionState("ar", "ok", "Готова");
+            refreshLookControls();
+            startGameIfReady();
+          })
+          .catch(function (error) {
+            stopCameraStream();
+            updatePermissionState("camera", "error", "Ошибка");
+            updatePermissionState("ar", "error", "Ошибка");
+            throw new Error(normalizeCameraError(error));
+          });
       }
 
       function requestMicrophonePermission() {
@@ -518,14 +653,11 @@
         }
 
         return withTimeout(navigator.mediaDevices.getUserMedia({ audio: true }), 12000, "Safari не подтвердил доступ к микрофону. Повторите запрос.").then(function (stream) {
-          var tracks = stream ? stream.getTracks() : [];
-          for (var i = 0; i < tracks.length; i++) {
-            tracks[i].stop();
-          }
+          stopMediaStream(stream);
           updatePermissionState("microphone", "ok", "Разрешен");
-        }, function () {
+        }, function (error) {
           updatePermissionState("microphone", "error", "Запрещен");
-          throw new Error("Разрешите доступ к микрофону.");
+          throw new Error(normalizeMicrophoneError(error));
         });
       }
 
@@ -558,6 +690,9 @@
           );
         });
       }
+
+      window.addEventListener("pagehide", stopCameraStream);
+      window.addEventListener("beforeunload", stopCameraStream);
 
       function startGpsWatch() {
         if (!navigator.geolocation || watchId != null) return;
@@ -831,9 +966,10 @@
       }
 
       function startGameIfReady() {
-        if (gameStarted || !permissionsGranted || !sceneLoaded || !arSourceReady) return;
+        if (gameStarted || !permissionsGranted || !sceneLoaded || !cameraReady) return;
 
         gameStarted = true;
+        if (cameraFeed) cameraFeed.style.visibility = "visible";
         scene.style.visibility = "visible";
         if (loader) loader.style.display = "none";
         setPermissionButtonState(true, "Игра идет");
