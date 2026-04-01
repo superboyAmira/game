@@ -11,6 +11,7 @@
     * { box-sizing: border-box; }
     body { margin: 0; overflow: hidden; background: #0a0a0f; touch-action: manipulation; }
     a-scene { touch-action: none; }
+    #ar-scene { visibility: hidden; }
     .arjs-loader {
       position: absolute; inset: 0; z-index: 9999;
       display: flex; justify-content: center; align-items: center; flex-direction: column;
@@ -20,6 +21,52 @@
     .arjs-loader h2 { margin: 0 0 12px; color: #7dd3fc; font-size: 1.25rem; }
     .arjs-loader p { margin: 6px 0; max-width: 360px; font-size: 14px; color: #94a3b8; }
     .arjs-loader a { color: #38bdf8; }
+    .permission-status {
+      width: min(100%, 360px);
+      margin: 10px 0 6px;
+      padding: 12px 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.55);
+      text-align: left;
+    }
+    .permission-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 6px 0;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+    .permission-row + .permission-row {
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .permission-value { font-weight: 600; }
+    .permission-value.is-pending { color: #fbbf24; }
+    .permission-value.is-ok { color: #4ade80; }
+    .permission-value.is-error { color: #f87171; }
+    .permission-button {
+      margin-top: 10px;
+      padding: 12px 20px;
+      border: 0;
+      border-radius: 12px;
+      background: linear-gradient(90deg, #7c3aed, #2563eb);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .permission-button:disabled {
+      opacity: 0.7;
+      cursor: wait;
+    }
+    .permission-error {
+      min-height: 20px;
+      margin-top: 8px;
+      color: #fca5a5;
+      font-size: 13px;
+    }
     .ui-overlay { position: fixed; left: 0; right: 0; z-index: 10000; pointer-events: none; }
     .ui-overlay .clickable { pointer-events: auto; }
     .rules-bar {
@@ -72,20 +119,23 @@
 <body>
   <div class="arjs-loader" id="loader">
     <h2>Duck Rescue AR</h2>
-    <p id="loader-msg">Разрешите доступ к камере. Вы находитесь на сцене, как в игре; фон — обстановка с камеры. Поворачивайте телефон, чтобы осмотреться.</p>
-    <p style="font-size: 13px;">Тап по утке — спасти. Не касайтесь лис. Геопозиция внизу.</p>
+    <p id="loader-msg">Игра начнется только после доступа к камере, микрофону, геолокации и датчикам устройства.</p>
+    <div class="permission-status">
+      <div class="permission-row"><span>Камера</span><span class="permission-value is-pending" id="perm-camera">ожидание</span></div>
+      <div class="permission-row"><span>Микрофон</span><span class="permission-value is-pending" id="perm-microphone">ожидание</span></div>
+      <div class="permission-row"><span>Геолокация</span><span class="permission-value is-pending" id="perm-geolocation">ожидание</span></div>
+      <div class="permission-row"><span>Датчики</span><span class="permission-value is-pending" id="perm-sensors">ожидание</span></div>
+      <div class="permission-row"><span>AR-камера</span><span class="permission-value is-pending" id="perm-ar">ожидание</span></div>
+    </div>
+    <button type="button" class="permission-button" id="permission-button">Разрешить и запустить AR</button>
+    <p class="permission-error" id="permission-error"></p>
+    <p style="font-size: 13px;">Таймер стартует только после полной готовности сцены.</p>
     <p><a href="start.html">← Старт</a></p>
   </div>
-  <script>
-    if (window.location.protocol === "file:") {
-      var w = document.getElementById("file-protocol-warn");
-      if (w) w.style.display = "block";
-    }
-  </script>
 
   <div class="ui-overlay rules-bar">
-    <span class="rules-text">Собери 6 уток за 40 секунд, не подпусти лис</span>
-    <span class="timer-display" id="timer">40</span>
+    <span class="rules-text">Собери 6 уток за 2 минуты, не подпусти лис</span>
+    <span class="timer-display" id="timer">02:00</span>
   </div>
   <div class="ui-overlay top-bar">
     <div class="score-bar">
@@ -117,7 +167,7 @@
     vr-mode-ui="enabled: false"
     renderer="antialias: true; alpha: true"
     physics="driver: cannon; gravity: 0"
-    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
+    data-arjs-config="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
   >
     <a-assets timeout="10000">
       <img id="groundTex" src="assets/forest-floor.jpg">
@@ -179,30 +229,305 @@
   <script>
     (function () {
       var loader = document.getElementById("loader");
+      var loaderMsg = document.getElementById("loader-msg");
+      var permissionButton = document.getElementById("permission-button");
+      var permissionErrorEl = document.getElementById("permission-error");
       var scoreEl = document.getElementById("score");
       var totalEl = document.getElementById("total");
       var gpsText = document.getElementById("gps-text");
       var gameOverEl = document.getElementById("game-over");
       var gameWinEl = document.getElementById("game-win");
       var finalScoreLose = document.getElementById("final-score-lose");
-      var scene = document.querySelector("a-scene");
+      var scene = document.getElementById("ar-scene");
       var camera = document.getElementById("ar-camera");
+      var rulesTextEl = document.querySelector(".rules-text");
+      var gameOverReasonEl = document.getElementById("game-over-reason");
+      var timerEl = document.getElementById("timer");
+      var permissionStates = {
+        camera: document.getElementById("perm-camera"),
+        microphone: document.getElementById("perm-microphone"),
+        geolocation: document.getElementById("perm-geolocation"),
+        sensors: document.getElementById("perm-sensors"),
+        ar: document.getElementById("perm-ar")
+      };
+      var arConfig = scene ? scene.getAttribute("data-arjs-config") : "";
       var totalCapsules = 6;
       var score = 0;
       var gameEnded = false;
+      var gameStarted = false;
+      var permissionsGranted = false;
+      var permissionRequestInFlight = false;
+      var arSourceReady = false;
+      var sceneLoaded = false;
       var watchId = null;
       var capsuleCount = 0;
       var CAPSULE_RESPAWN_DELAY = 3000;
-      var GAME_DURATION = 40;
-      var timeLeft = 40;
+      var GAME_DURATION = 120;
+      var GAME_DURATION_LABEL = "2 минуты";
+      var timeLeft = GAME_DURATION;
       var timerId = null;
       var worldCapsulesContainer = null;
       var glbLoaded = false;
-      var gameOverReasonEl = document.getElementById("game-over-reason");
-      var timerEl = document.getElementById("timer");
+      var pointerHandlerBound = false;
 
-      if (timerEl) timerEl.textContent = GAME_DURATION + " с";
-      startTimer();
+      if (rulesTextEl) {
+        rulesTextEl.textContent = "Собери 6 уток за " + GAME_DURATION_LABEL + ", не подпусти лис";
+      }
+
+      updateScore();
+      renderTimer(GAME_DURATION);
+      updateGps(null, null);
+      updatePermissionState("camera", "pending", "Ожидание");
+      updatePermissionState("microphone", "pending", "Ожидание");
+      updatePermissionState("geolocation", "pending", "Ожидание");
+      updatePermissionState("sensors", "pending", "Ожидание");
+      updatePermissionState("ar", "pending", "Ожидание");
+
+      if (permissionButton) {
+        permissionButton.addEventListener("click", requestPermissionsAndStart);
+      }
+
+      if (window.location.protocol === "file:") {
+        setLoaderMessage("Откройте страницу через HTTPS или локальный сервер, иначе разрешения для AR не сработают.");
+        setPermissionError("Запуск из file:// не поддерживается.");
+        setPermissionButtonState(true, "Требуется сервер");
+        markAllPermissionsUnavailable();
+        return;
+      }
+
+      if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+        setLoaderMessage("Для камеры, микрофона и геолокации нужен HTTPS или localhost.");
+        setPermissionError("Откройте страницу по HTTPS.");
+        setPermissionButtonState(true, "Требуется HTTPS");
+        markAllPermissionsUnavailable();
+        return;
+      }
+
+      window.addEventListener("arjs-source-ready", function () {
+        arSourceReady = true;
+        updatePermissionState("ar", "ok", "Готово");
+        setLoaderMessage("AR-камера готова. Запускаем игру...");
+        startGameIfReady();
+      });
+
+      window.addEventListener("arjs-error", function () {
+        updatePermissionState("ar", "error", "Ошибка");
+        setLoaderMessage("Не удалось запустить AR-камеру.");
+        setPermissionError("Проверьте разрешения браузера и перезагрузите страницу.");
+        setPermissionButtonState(false, "Разрешить и запустить AR");
+        permissionRequestInFlight = false;
+      });
+
+      function setLoaderMessage(text) {
+        if (loaderMsg) loaderMsg.textContent = text;
+      }
+
+      function setPermissionError(text) {
+        if (permissionErrorEl) permissionErrorEl.textContent = text || "";
+      }
+
+      function setPermissionButtonState(disabled, label) {
+        if (!permissionButton) return;
+        permissionButton.disabled = !!disabled;
+        if (label) permissionButton.textContent = label;
+      }
+
+      function updatePermissionState(key, state, text) {
+        var el = permissionStates[key];
+        if (!el) return;
+        el.textContent = text;
+        el.className = "permission-value " + (
+          state === "ok" ? "is-ok" :
+          state === "error" ? "is-error" :
+          "is-pending"
+        );
+      }
+
+      function markAllPermissionsUnavailable() {
+        updatePermissionState("camera", "error", "Недоступно");
+        updatePermissionState("microphone", "error", "Недоступно");
+        updatePermissionState("geolocation", "error", "Недоступно");
+        updatePermissionState("sensors", "error", "Недоступно");
+        updatePermissionState("ar", "error", "Недоступно");
+      }
+
+      function formatTime(seconds) {
+        var mins = Math.floor(seconds / 60);
+        var secs = seconds % 60;
+        return mins + ":" + (secs < 10 ? "0" + secs : secs);
+      }
+
+      function renderTimer(seconds) {
+        if (timerEl) timerEl.textContent = formatTime(seconds);
+      }
+
+      function updateScore() {
+        if (scoreEl) scoreEl.textContent = score;
+        if (totalEl) totalEl.textContent = totalCapsules;
+      }
+
+      function updateGps(lat, lng) {
+        if (!gpsText) return;
+        if (lat == null || lng == null) {
+          gpsText.textContent = "ожидание разрешений";
+          return;
+        }
+        gpsText.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
+      }
+
+      function setGpsText(text) {
+        if (gpsText) gpsText.textContent = text;
+      }
+
+      function initArScene() {
+        if (!scene || scene.getAttribute("arjs") != null) return;
+        updatePermissionState("ar", "pending", "Запуск");
+        scene.setAttribute("arjs", arConfig);
+      }
+
+      function requestPermissionsAndStart() {
+        if (permissionRequestInFlight || permissionsGranted) return;
+
+        permissionRequestInFlight = true;
+        setPermissionError("");
+        setLoaderMessage("Подтвердите все запросы браузера и дождитесь готовности AR.");
+        setPermissionButtonState(true, "Запрашиваем разрешения...");
+
+        var sensorPromise = requestSensorPermissions();
+
+        sensorPromise
+          .then(requestMediaPermissions)
+          .then(requestGeolocationPermission)
+          .then(function () {
+            permissionsGranted = true;
+            permissionRequestInFlight = false;
+            setLoaderMessage("Разрешения получены. Подключаем AR-камеру...");
+            setPermissionButtonState(true, "Подключаем AR...");
+            startGpsWatch();
+            initArScene();
+            startGameIfReady();
+          })
+          .catch(function (error) {
+            permissionsGranted = false;
+            permissionRequestInFlight = false;
+            setLoaderMessage("Игра не начнется без всех обязательных разрешений.");
+            setPermissionError(error && error.message ? error.message : "Не удалось получить разрешения.");
+            setPermissionButtonState(false, "Повторить запрос");
+          });
+      }
+
+      function requestSensorPermissions() {
+        var needsOrientation = typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
+        var needsMotion = typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function";
+        var requests = [];
+
+        if (!needsOrientation && !needsMotion) {
+          updatePermissionState("sensors", "ok", "Не нужны");
+          return Promise.resolve();
+        }
+
+        updatePermissionState("sensors", "pending", "Запрашиваем");
+
+        if (needsOrientation) requests.push(DeviceOrientationEvent.requestPermission());
+        if (needsMotion) requests.push(DeviceMotionEvent.requestPermission());
+
+        return Promise.all(requests).then(function (results) {
+          var allGranted = true;
+          for (var i = 0; i < results.length; i++) {
+            if (results[i] !== "granted") {
+              allGranted = false;
+              break;
+            }
+          }
+
+          if (!allGranted) {
+            updatePermissionState("sensors", "error", "Запрещено");
+            throw new Error("Разрешите доступ к датчикам устройства.");
+          }
+
+          updatePermissionState("sensors", "ok", "Разрешены");
+        }, function () {
+          updatePermissionState("sensors", "error", "Запрещено");
+          throw new Error("Разрешите доступ к датчикам устройства.");
+        });
+      }
+
+      function requestMediaPermissions() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          updatePermissionState("camera", "error", "Нет API");
+          updatePermissionState("microphone", "error", "Нет API");
+          return Promise.reject(new Error("Браузер не поддерживает камеру и микрофон."));
+        }
+
+        updatePermissionState("camera", "pending", "Запрашиваем");
+        updatePermissionState("microphone", "pending", "Запрашиваем");
+
+        return navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(function (stream) {
+          var tracks = stream ? stream.getTracks() : [];
+          for (var i = 0; i < tracks.length; i++) {
+            tracks[i].stop();
+          }
+
+          updatePermissionState("camera", "ok", "Разрешена");
+          updatePermissionState("microphone", "ok", "Разрешен");
+        }, function () {
+          updatePermissionState("camera", "error", "Запрещена");
+          updatePermissionState("microphone", "error", "Запрещен");
+          throw new Error("Разрешите доступ к камере и микрофону.");
+        });
+      }
+
+      function requestGeolocationPermission() {
+        return new Promise(function (resolve, reject) {
+          if (!navigator.geolocation) {
+            updatePermissionState("geolocation", "error", "Нет API");
+            reject(new Error("Браузер не поддерживает геолокацию."));
+            return;
+          }
+
+          updatePermissionState("geolocation", "pending", "Запрашиваем");
+
+          navigator.geolocation.getCurrentPosition(
+            function (pos) {
+              updateGps(pos.coords.latitude, pos.coords.longitude);
+              updatePermissionState("geolocation", "ok", "Разрешена");
+              resolve();
+            },
+            function (error) {
+              if (error && error.code === 1) {
+                updatePermissionState("geolocation", "error", "Запрещена");
+                reject(new Error("Разрешите доступ к геолокации."));
+                return;
+              }
+
+              setGpsText("поиск координат...");
+              updatePermissionState("geolocation", "ok", "Разрешена");
+              resolve();
+            },
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
+          );
+        });
+      }
+
+      function startGpsWatch() {
+        if (!navigator.geolocation || watchId != null) return;
+
+        watchId = navigator.geolocation.watchPosition(
+          function (pos) {
+            updateGps(pos.coords.latitude, pos.coords.longitude);
+            updatePermissionState("geolocation", "ok", "Разрешена");
+          },
+          function (error) {
+            if (error && error.code === 1) {
+              updatePermissionState("geolocation", "error", "Запрещена");
+              setGpsText("доступ запрещен");
+              return;
+            }
+            setGpsText("поиск координат...");
+          },
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+        );
+      }
 
       function applyCapsuleModel(el) {
         var slot = el.querySelector(".capsule-gltf");
@@ -217,7 +542,7 @@
       }
 
       function makeCapsule(container) {
-        if (!container || gameEnded) return null;
+        if (!container || gameEnded || !gameStarted) return null;
 
         capsuleCount += 1;
         var angle = Math.random() * Math.PI * 2;
@@ -278,28 +603,16 @@
         return el;
       }
 
-      function hideLoader() {
-        if (loader) loader.style.display = "none";
-      }
-      window.addEventListener("arjs-source-ready", hideLoader);
-      window.addEventListener("arjs-error", function () { hideLoader(); });
-      setTimeout(hideLoader, 8000);
-
-      function updateScore() {
-        if (scoreEl) scoreEl.textContent = score;
-        if (totalEl) totalEl.textContent = totalCapsules;
-      }
-
       function startTimer() {
+        stopTimer();
         timeLeft = GAME_DURATION;
-        if (timerEl) timerEl.textContent = timeLeft + " с";
+        renderTimer(timeLeft);
         timerId = setInterval(function () {
-          if (gameEnded) return;
+          if (gameEnded || !gameStarted) return;
           timeLeft -= 1;
-          if (timerEl) timerEl.textContent = timeLeft + " с";
+          renderTimer(timeLeft);
           if (timeLeft <= 0) {
-            clearInterval(timerId);
-            timerId = null;
+            stopTimer();
             endGameByTimeout();
           }
         }, 1000);
@@ -313,22 +626,13 @@
       }
 
       function endGameByTimeout() {
-        if (gameEnded) return;
+        if (gameEnded || !gameStarted) return;
         gameEnded = true;
         stopTimer();
-        if (gameOverReasonEl) gameOverReasonEl.textContent = "Время вышло. Спасите 6 уток за " + GAME_DURATION + " секунд.";
+        if (gameOverReasonEl) gameOverReasonEl.textContent = "Время вышло. Спасите 6 уток за " + GAME_DURATION_LABEL + ".";
         if (finalScoreLose) finalScoreLose.textContent = score;
         if (gameOverEl) gameOverEl.classList.add("show");
         scene.emit("gameover");
-      }
-
-      function updateGps(lat, lng) {
-        if (!gpsText) return;
-        if (lat == null || lng == null) {
-          gpsText.textContent = "нет данных";
-          return;
-        }
-        gpsText.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
       }
 
       function getCapsule(el) {
@@ -339,6 +643,7 @@
         }
         return null;
       }
+
       function getDrone(el) {
         var cur = el;
         while (cur && cur !== document.body) {
@@ -372,7 +677,7 @@
       }
 
       function collectCapsule(capsule) {
-        if (gameEnded || !capsule || capsule.getAttribute("data-collected")) return;
+        if (!gameStarted || gameEnded || !capsule || capsule.getAttribute("data-collected")) return;
         capsule.setAttribute("data-collected", "true");
         score += 1;
         updateScore();
@@ -388,14 +693,14 @@
           if (gameWinEl) gameWinEl.classList.add("show");
         } else if (!gameEnded && worldCapsulesContainer) {
           setTimeout(function () {
-            if (gameEnded) return;
+            if (gameEnded || !gameStarted) return;
             makeCapsule(worldCapsulesContainer);
           }, CAPSULE_RESPAWN_DELAY);
         }
       }
 
       function loseGame() {
-        if (gameEnded) return;
+        if (!gameStarted || gameEnded) return;
         gameEnded = true;
         stopTimer();
         scene.emit("gameover");
@@ -405,7 +710,7 @@
       }
 
       function handleIntersection(target) {
-        if (!target) return;
+        if (!gameStarted || !target) return;
         var capsule = getCapsule(target);
         if (capsule) {
           collectCapsule(capsule);
@@ -423,7 +728,6 @@
         return null;
       }
 
-      var pointerHandlerBound = false;
       function setupPointerHandler() {
         if (pointerHandlerBound) return;
         var scene3D = scene.object3D;
@@ -436,7 +740,7 @@
         var raycaster = new THREE.Raycaster();
 
         function onPointer(ev) {
-          if (gameEnded) return;
+          if (!gameStarted || gameEnded) return;
           var clientX = ev.clientX != null ? ev.clientX : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : (ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0].clientX : 0));
           var clientY = ev.clientY != null ? ev.clientY : (ev.touches && ev.touches[0] ? ev.touches[0].clientY : (ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0].clientY : 0));
           var rect = canvas.getBoundingClientRect();
@@ -472,30 +776,27 @@
         pointerHandlerBound = true;
       }
 
-      scene.addEventListener("loaded", function () {
+      function startGameIfReady() {
+        if (gameStarted || !permissionsGranted || !sceneLoaded || !arSourceReady) return;
+
+        gameStarted = true;
+        scene.style.visibility = "visible";
+        if (loader) loader.style.display = "none";
+        updateScore();
+        if (worldCapsulesContainer && !document.querySelector(".capsule-collect")) {
+          makeCapsule(worldCapsulesContainer);
+        }
+        startTimer();
+      }
+
+      function onSceneLoaded() {
+        if (sceneLoaded) return;
+
+        sceneLoaded = true;
         updateScore();
         setupPointerHandler();
         setupDroneModels();
-
         worldCapsulesContainer = document.getElementById("world-capsules");
-        if (worldCapsulesContainer) {
-          makeCapsule(worldCapsulesContainer);
-        }
-
-        if (navigator.geolocation) {
-          updateGps(null, null);
-          watchId = navigator.geolocation.watchPosition(
-            function (pos) {
-              updateGps(pos.coords.latitude, pos.coords.longitude);
-            },
-            function () {
-              updateGps(null, null);
-            },
-            { enableHighAccuracy: true, maximumAge: 5000 }
-          );
-        } else {
-          if (gpsText) gpsText.textContent = "геолокация недоступна";
-        }
 
         fetch("assets/duck_collectible.glb", { cache: "no-store" })
           .then(function (r) {
@@ -506,7 +807,15 @@
             });
           })
           .catch(function () {});
-      });
+
+        startGameIfReady();
+      }
+
+      if (scene && scene.hasLoaded) {
+        onSceneLoaded();
+      } else if (scene) {
+        scene.addEventListener("loaded", onSceneLoaded);
+      }
     })();
   </script>
 </body>
