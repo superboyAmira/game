@@ -120,7 +120,7 @@
 <body>
   <div class="arjs-loader" id="loader">
     <h2>Duck Rescue AR</h2>
-    <p id="loader-msg">Игра начнется только после доступа к камере, микрофону, геолокации и датчикам устройства.</p>
+    <p id="loader-msg">Сначала разрешите камеру браузеру. Игра начнется только после доступа к микрофону, геолокации и датчикам устройства.</p>
     <div class="permission-status">
       <div class="permission-row"><span>Камера</span><span class="permission-value is-pending" id="perm-camera">ожидание</span></div>
       <div class="permission-row"><span>Микрофон</span><span class="permission-value is-pending" id="perm-microphone">ожидание</span></div>
@@ -128,7 +128,7 @@
       <div class="permission-row"><span>Датчики</span><span class="permission-value is-pending" id="perm-sensors">ожидание</span></div>
       <div class="permission-row"><span>AR-камера</span><span class="permission-value is-pending" id="perm-ar">ожидание</span></div>
     </div>
-    <button type="button" class="permission-button" id="permission-button">Разрешить и запустить AR</button>
+    <button type="button" class="permission-button" id="permission-button">Разрешить остальные доступы и начать</button>
     <p class="permission-error" id="permission-error"></p>
     <p style="font-size: 13px;">На iPhone сцена работает через камеру и гироскоп. Пол убран, объекты висят в пространстве вокруг точки старта.</p>
     <p><a href="start.html">← Старт</a></p>
@@ -169,7 +169,7 @@
     renderer="antialias: true; alpha: true"
     physics="driver: cannon; gravity: 0"
     device-orientation-permission-ui="enabled: false"
-    data-arjs-config="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
+    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
   >
     <a-assets timeout="10000">
       <audio id="collectSound" src="https://cdn.aframe.io/aframe/examples/primitives/click.ogg" preload="auto"></audio>
@@ -241,7 +241,6 @@
         sensors: document.getElementById("perm-sensors"),
         ar: document.getElementById("perm-ar")
       };
-      var arConfig = scene ? scene.getAttribute("data-arjs-config") : "";
       var totalCapsules = 6;
       var score = 0;
       var gameEnded = false;
@@ -294,14 +293,39 @@
         return;
       }
 
-      window.addEventListener("arjs-source-ready", function () {
+      function handleCameraInit() {
+        updatePermissionState("camera", "ok", "Разрешена");
+      }
+
+      function handleCameraError() {
+        updatePermissionState("camera", "error", "Ошибка");
+        updatePermissionState("ar", "error", "Ошибка");
+        setLoaderMessage("Не удалось получить доступ к камере.");
+        setPermissionError("Разрешите камеру для сайта и перезагрузите страницу.");
+        setPermissionButtonState(false, "Камера недоступна");
+      }
+
+      function handleArSourceReady() {
         arSourceReady = true;
         scene.style.visibility = "visible";
+        updatePermissionState("camera", "ok", "Разрешена");
         updatePermissionState("ar", "ok", "Готово");
         setLoaderMessage("AR-камера активна. Поворачивайте телефон, чтобы осмотреть сцену.");
+        if (!permissionsGranted && !permissionRequestInFlight) {
+          setPermissionButtonState(false, "Разрешить остальные доступы и начать");
+        }
         refreshLookControls();
         startGameIfReady();
-      });
+      }
+
+      window.addEventListener("camera-init", handleCameraInit);
+      window.addEventListener("camera-error", handleCameraError);
+      window.addEventListener("arjs-source-ready", handleArSourceReady);
+      if (scene) {
+        scene.addEventListener("camera-init", handleCameraInit);
+        scene.addEventListener("camera-error", handleCameraError);
+        scene.addEventListener("arjs-source-ready", handleArSourceReady);
+      }
 
       window.addEventListener("arjs-error", function () {
         updatePermissionState("ar", "error", "Ошибка");
@@ -391,12 +415,27 @@
         }
       }
 
-      function initArScene() {
-        if (!scene || scene.getAttribute("arjs") != null) return;
-        updatePermissionState("ar", "pending", "Запуск");
-        setPermissionButtonState(true, "Подключаем AR...");
-        setLoaderMessage("Разрешения получены. Подключаем AR-камеру...");
-        scene.setAttribute("arjs", arConfig);
+      function withTimeout(promise, timeoutMs, errorMessage) {
+        return new Promise(function (resolve, reject) {
+          var settled = false;
+          var timer = window.setTimeout(function () {
+            if (settled) return;
+            settled = true;
+            reject(new Error(errorMessage));
+          }, timeoutMs);
+
+          promise.then(function (value) {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            resolve(value);
+          }, function (error) {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            reject(error);
+          });
+        });
       }
 
       function requestPermissionsAndStart() {
@@ -410,24 +449,30 @@
         setPermissionError("");
         setLoaderMessage("Подтвердите все запросы браузера. Игра стартует только после полной готовности сцены.");
         setPermissionButtonState(true, "Запрашиваем разрешения...");
-        updatePermissionState("camera", "pending", "Запрашиваем");
         updatePermissionState("microphone", "pending", "Запрашиваем");
         updatePermissionState("geolocation", "pending", "Запрашиваем");
         updatePermissionState("sensors", "pending", "Запрашиваем");
-        updatePermissionState("ar", "pending", "Ожидание");
+        if (!arSourceReady) {
+          updatePermissionState("ar", "pending", "Ждем камеру");
+        }
 
         requestSensorPermissions()
           .then(function () {
             refreshLookControls();
-            return requestMediaPermissions();
+            return requestMicrophonePermission();
           })
           .then(requestGeolocationPermission)
           .then(function () {
             permissionsGranted = true;
             permissionRequestInFlight = false;
             startGpsWatch();
-            initArScene();
             refreshLookControls();
+            if (!arSourceReady) {
+              setLoaderMessage("Доступы получены. Ждём запуска AR-камеры...");
+              setPermissionButtonState(true, "Ждём AR-камеру...");
+            } else {
+              setPermissionButtonState(true, "Запускаем игру...");
+            }
             startGameIfReady();
           })
           .catch(function (error) {
@@ -466,24 +511,21 @@
         });
       }
 
-      function requestMediaPermissions() {
+      function requestMicrophonePermission() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          updatePermissionState("camera", "error", "Нет API");
           updatePermissionState("microphone", "error", "Нет API");
-          return Promise.reject(new Error("Браузер не поддерживает камеру и микрофон."));
+          return Promise.reject(new Error("Браузер не поддерживает доступ к микрофону."));
         }
 
-        return navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(function (stream) {
+        return withTimeout(navigator.mediaDevices.getUserMedia({ audio: true }), 12000, "Safari не подтвердил доступ к микрофону. Повторите запрос.").then(function (stream) {
           var tracks = stream ? stream.getTracks() : [];
           for (var i = 0; i < tracks.length; i++) {
             tracks[i].stop();
           }
-          updatePermissionState("camera", "ok", "Разрешена");
           updatePermissionState("microphone", "ok", "Разрешен");
         }, function () {
-          updatePermissionState("camera", "error", "Запрещена");
           updatePermissionState("microphone", "error", "Запрещен");
-          throw new Error("Разрешите доступ к камере и микрофону.");
+          throw new Error("Разрешите доступ к микрофону.");
         });
       }
 
@@ -794,6 +836,7 @@
         gameStarted = true;
         scene.style.visibility = "visible";
         if (loader) loader.style.display = "none";
+        setPermissionButtonState(true, "Игра идет");
         updateScore();
         if (worldCapsulesContainer && !document.querySelector(".capsule-collect")) {
           makeCapsule(worldCapsulesContainer);
