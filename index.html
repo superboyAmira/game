@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Duck Rescue — Лесной дозор</title>
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-physics-system@4.0.2/dist/aframe-physics-system.min.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background: #040712; }
+    #ui,
+    #hint {
+      position: fixed;
+      left: 16px;
+      z-index: 100;
+      color: #fff;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: rgba(4, 10, 25, 0.72);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+    #ui {
+      top: 16px;
+      padding: 12px 16px;
+      font-size: 17px;
+      line-height: 1.5;
+    }
+    #hint {
+      bottom: 16px;
+      max-width: 360px;
+      padding: 12px 14px;
+      font-size: 14px;
+      color: #d9e2f2;
+    }
+    #ui strong { color: #8be9fd; }
+    #ui a,
+    #hint a {
+      color: #79c7ff;
+      text-decoration: none;
+      margin-left: 8px;
+    }
+    #ui a:hover,
+    #hint a:hover { text-decoration: underline; }
+    #game-over, #game-win {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 5, 14, 0.9);
+      z-index: 200;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      color: #fff;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 28px;
+      padding: 24px;
+      text-align: center;
+    }
+    #game-over.show, #game-win.show { display: flex; }
+    #game-over h2, #game-win h2 {
+      margin: 0 0 16px;
+      font-size: clamp(2rem, 6vw, 3rem);
+    }
+    #game-over h2 { color: #ff7b7b; }
+    #game-win h2 { color: #7fffb0; }
+    #game-over p, #game-win p {
+      margin: 8px 0;
+      max-width: 560px;
+      color: #d6deea;
+    }
+    #game-over a, #game-win a {
+      display: inline-block;
+      margin: 18px 8px 0;
+      padding: 12px 24px;
+      border-radius: 10px;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      background: linear-gradient(90deg, #0ca7ff, #0b77ff);
+    }
+    #game-win a:nth-of-type(2) { background: linear-gradient(90deg, #7b2cbf, #5a189a); }
+  </style>
+</head>
+<body>
+  <div id="ui">
+      <div><strong>Duck Rescue</strong></div>
+      <div>Утки: <span id="score">0</span> / <span id="total">0</span></div>
+      <div>Статус: <span id="status">спасите всех уток</span></div>
+    <div>
+      <a href="ar.html">AR</a>
+      <a href="start.html">QR</a>
+    </div>
+  </div>
+
+  <div id="hint">
+      Не подходите к лисам, иначе — поражение. Спасайте уток до истечения времени.
+  </div>
+
+  <div id="game-over">
+    <h2>Тропа прервана</h2>
+    <p>Лиса перехватила вас раньше, чем все утки были спасены.</p>
+    <p>Итог: <span id="final-score-lose">0</span> уток</p>
+    <a href="index.html">Перезапуск</a>
+    <a href="start.html">Открыть QR-страницу</a>
+  </div>
+
+  <div id="game-win">
+    <h2>Ура, миссия выполнена</h2>
+    <p>Все 6 уток найдены и в безопасности.</p>
+    <p>Итог: <span id="final-score-win">0</span> уток</p>
+    <a href="index.html">Сыграть еще раз</a>
+    <a href="ar.html">Открыть AR на телефоне</a>
+    <a href="start.html">QR-страница</a>
+  </div>
+
+  <a-scene id="scene" physics="driver: cannon; gravity: 0">
+    <a-assets timeout="15000">
+      <img id="groundTex" src="assets/space-floor.svg">
+      <img id="skyTex" src="assets/starfield.svg">
+      <audio id="collectSound" src="https://cdn.aframe.io/aframe/examples/primitives/click.ogg" preload="auto"></audio>
+      <audio id="loseSound" src="https://cdn.aframe.io/basic-guide/audio/backgroundnoise.wav" preload="auto"></audio>
+      <audio id="winSound" src="https://cdn.aframe.io/360-image-gallery-boilerplate/audio/click.ogg" preload="auto"></audio>
+    </a-assets>
+
+    <a-sky src="#skyTex" rotation="0 -90 0"></a-sky>
+
+    <a-entity
+      id="platform"
+      geometry="primitive: plane; width: 32; height: 32"
+      material="src: #groundTex; repeat: 10 10; roughness: 0.85; metalness: 0.15"
+      position="0 0 0"
+      rotation="-90 0 0"
+      static-body
+    ></a-entity>
+
+    <a-entity
+      geometry="primitive: ring; radiusInner: 13.5; radiusOuter: 15.3"
+      material="color: #5ac8fa; emissive: #1b6aff; opacity: 0.3; transparent: true; side: double"
+      position="0 0.05 0"
+      rotation="-90 0 0"
+    ></a-entity>
+
+    <a-light type="ambient" intensity="0.68" color="#c8dcff"></a-light>
+    <a-light type="directional" position="6 9 3" intensity="0.9" color="#ffffff"></a-light>
+    <a-light type="point" position="0 6 0" intensity="0.7" color="#7fd3ff"></a-light>
+    <a-light id="alarm-light" type="point" position="0 3 0" intensity="0.25" color="#38bdf8"></a-light>
+
+    <a-entity id="sound-collect" sound="src: #collectSound; on: collect"></a-entity>
+    <a-entity id="sound-lose" sound="src: #loseSound; on: gameover"></a-entity>
+    <a-entity id="sound-win" sound="src: #winSound; on: gamewin"></a-entity>
+
+    <a-entity
+      id="player"
+      position="0 1.6 9"
+      camera
+      look-controls
+      wasd-controls="acceleration: 55; maxSpeed: 18"
+      kinematic-body="mass: 10; radius: 0.5; height: 1.6"
+    >
+      <a-entity cursor="rayOrigin: mouse; fuse: false" raycaster="objects: [data-collect], [data-obstacle]"></a-entity>
+      <a-entity
+        id="hud-score"
+        text="value: Утки: 0 / 0; align: center; width: 2.8; color: #ffffff"
+        position="0 -0.32 -1.1"
+      ></a-entity>
+      <a-entity
+        text="value: Лесной дозор; align: center; width: 3.2; color: #8be9fd"
+        position="0 -0.12 -1.1"
+      ></a-entity>
+    </a-entity>
+
+    <a-entity
+      id="capsules-container"
+      position="0 0 0"
+      animation="property: rotation; to: 0 360 0; loop: true; dur: 30000; easing: linear"
+    >
+      <a-entity class="capsule" data-collect position="-6 0.9 -5"
+        geometry="primitive: sphere; radius: 0.48"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.48; sensor: true"
+        animation__collect="property: scale; to: 0.01 0.01 0.01; dur: 220; startEvents: collected"
+      >
+        <a-entity class="capsule-fallback" position="0 0 0" animation="property: rotation; to: 0 360 0; loop: true; dur: 4000; easing: linear">
+          <a-cylinder radius="0.24" height="0.22" color="#5d6678" metalness="0.7" roughness="0.35" position="0 -0.34 0"></a-cylinder>
+          <a-cylinder radius="0.2" height="0.7" color="#90e0ff" opacity="0.38" transparent="true" position="0 0 0"></a-cylinder>
+          <a-sphere radius="0.11" color="#7fffd4" emissive="#1dd3b0" emissive-intensity="0.8" position="0 0 0"></a-sphere>
+          <a-torus radius="0.28" radius-tubular="0.03" color="#7dd3fc" rotation="90 0 0"></a-torus>
+          <a-torus radius="0.2" radius-tubular="0.022" color="#c084fc" rotation="0 0 90"></a-torus>
+        </a-entity>
+        <a-entity class="capsule-gltf" visible="false" scale="0.65 0.65 0.65"></a-entity>
+      </a-entity>
+
+      <a-entity class="capsule" data-collect position="6 1.2 -6"
+        geometry="primitive: sphere; radius: 0.48"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.48; sensor: true"
+        animation__collect="property: scale; to: 0.01 0.01 0.01; dur: 220; startEvents: collected"
+      >
+        <a-entity class="capsule-fallback" animation="property: rotation; to: 0 -360 0; loop: true; dur: 4200; easing: linear">
+          <a-cylinder radius="0.24" height="0.22" color="#5d6678" metalness="0.7" roughness="0.35" position="0 -0.34 0"></a-cylinder>
+          <a-cylinder radius="0.2" height="0.7" color="#90e0ff" opacity="0.38" transparent="true" position="0 0 0"></a-cylinder>
+          <a-sphere radius="0.11" color="#7fffd4" emissive="#1dd3b0" emissive-intensity="0.8" position="0 0 0"></a-sphere>
+          <a-torus radius="0.28" radius-tubular="0.03" color="#7dd3fc" rotation="90 0 0"></a-torus>
+          <a-torus radius="0.2" radius-tubular="0.022" color="#c084fc" rotation="0 0 90"></a-torus>
+        </a-entity>
+        <a-entity class="capsule-gltf" visible="false" scale="0.65 0.65 0.65"></a-entity>
+      </a-entity>
+
+      <a-entity class="capsule" data-collect position="0 1.1 -9"
+        geometry="primitive: sphere; radius: 0.48"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.48; sensor: true"
+        animation__collect="property: scale; to: 0.01 0.01 0.01; dur: 220; startEvents: collected"
+      >
+        <a-entity class="capsule-fallback" animation="property: rotation; to: 0 360 0; loop: true; dur: 3900; easing: linear">
+          <a-cylinder radius="0.24" height="0.22" color="#5d6678" metalness="0.7" roughness="0.35" position="0 -0.34 0"></a-cylinder>
+          <a-cylinder radius="0.2" height="0.7" color="#90e0ff" opacity="0.38" transparent="true" position="0 0 0"></a-cylinder>
+          <a-sphere radius="0.11" color="#7fffd4" emissive="#1dd3b0" emissive-intensity="0.8" position="0 0 0"></a-sphere>
+          <a-torus radius="0.28" radius-tubular="0.03" color="#7dd3fc" rotation="90 0 0"></a-torus>
+          <a-torus radius="0.2" radius-tubular="0.022" color="#c084fc" rotation="0 0 90"></a-torus>
+        </a-entity>
+        <a-entity class="capsule-gltf" visible="false" scale="0.65 0.65 0.65"></a-entity>
+      </a-entity>
+
+      <a-entity class="capsule" data-collect position="-8 1.0 3"
+        geometry="primitive: sphere; radius: 0.48"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.48; sensor: true"
+        animation__collect="property: scale; to: 0.01 0.01 0.01; dur: 220; startEvents: collected"
+      >
+        <a-entity class="capsule-fallback" animation="property: rotation; to: 0 -360 0; loop: true; dur: 4100; easing: linear">
+          <a-cylinder radius="0.24" height="0.22" color="#5d6678" metalness="0.7" roughness="0.35" position="0 -0.34 0"></a-cylinder>
+          <a-cylinder radius="0.2" height="0.7" color="#90e0ff" opacity="0.38" transparent="true" position="0 0 0"></a-cylinder>
+          <a-sphere radius="0.11" color="#7fffd4" emissive="#1dd3b0" emissive-intensity="0.8" position="0 0 0"></a-sphere>
+          <a-torus radius="0.28" radius-tubular="0.03" color="#7dd3fc" rotation="90 0 0"></a-torus>
+          <a-torus radius="0.2" radius-tubular="0.022" color="#c084fc" rotation="0 0 90"></a-torus>
+        </a-entity>
+        <a-entity class="capsule-gltf" visible="false" scale="0.65 0.65 0.65"></a-entity>
+      </a-entity>
+
+      <a-entity class="capsule" data-collect position="8 1.1 1"
+        geometry="primitive: sphere; radius: 0.48"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.48; sensor: true"
+        animation__collect="property: scale; to: 0.01 0.01 0.01; dur: 220; startEvents: collected"
+      >
+        <a-entity class="capsule-fallback" animation="property: rotation; to: 0 360 0; loop: true; dur: 4050; easing: linear">
+          <a-cylinder radius="0.24" height="0.22" color="#5d6678" metalness="0.7" roughness="0.35" position="0 -0.34 0"></a-cylinder>
+          <a-cylinder radius="0.2" height="0.7" color="#90e0ff" opacity="0.38" transparent="true" position="0 0 0"></a-cylinder>
+          <a-sphere radius="0.11" color="#7fffd4" emissive="#1dd3b0" emissive-intensity="0.8" position="0 0 0"></a-sphere>
+          <a-torus radius="0.28" radius-tubular="0.03" color="#7dd3fc" rotation="90 0 0"></a-torus>
+          <a-torus radius="0.2" radius-tubular="0.022" color="#c084fc" rotation="0 0 90"></a-torus>
+        </a-entity>
+        <a-entity class="capsule-gltf" visible="false" scale="0.65 0.65 0.65"></a-entity>
+      </a-entity>
+
+      <a-entity class="capsule" data-collect position="0 1.15 8"
+        geometry="primitive: sphere; radius: 0.48"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.48; sensor: true"
+        animation__collect="property: scale; to: 0.01 0.01 0.01; dur: 220; startEvents: collected"
+      >
+        <a-entity class="capsule-fallback" animation="property: rotation; to: 0 -360 0; loop: true; dur: 3980; easing: linear">
+          <a-cylinder radius="0.24" height="0.22" color="#5d6678" metalness="0.7" roughness="0.35" position="0 -0.34 0"></a-cylinder>
+          <a-cylinder radius="0.2" height="0.7" color="#90e0ff" opacity="0.38" transparent="true" position="0 0 0"></a-cylinder>
+          <a-sphere radius="0.11" color="#7fffd4" emissive="#1dd3b0" emissive-intensity="0.8" position="0 0 0"></a-sphere>
+          <a-torus radius="0.28" radius-tubular="0.03" color="#7dd3fc" rotation="90 0 0"></a-torus>
+          <a-torus radius="0.2" radius-tubular="0.022" color="#c084fc" rotation="0 0 90"></a-torus>
+        </a-entity>
+        <a-entity class="capsule-gltf" visible="false" scale="0.65 0.65 0.65"></a-entity>
+      </a-entity>
+    </a-entity>
+
+    <a-entity id="drone-squad">
+      <a-entity class="obstacle drone" data-obstacle position="0 1.2 -3"
+        geometry="primitive: sphere; radius: 0.56"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.56"
+        animation="property: position; to: 5 1.2 -3; dir: alternate; loop: true; dur: 2600; easing: easeInOutSine"
+      >
+        <a-sphere radius="0.24" color="#ff7b54" metalness="0.35" roughness="0.35"></a-sphere>
+        <a-box width="1.05" height="0.1" depth="0.18" color="#f97316"></a-box>
+        <a-box width="0.18" height="0.1" depth="1.05" color="#f97316"></a-box>
+        <a-cylinder radius="0.07" height="0.16" color="#1f2937" position="0.48 0.08 0"></a-cylinder>
+        <a-cylinder radius="0.07" height="0.16" color="#1f2937" position="-0.48 0.08 0"></a-cylinder>
+        <a-cylinder radius="0.07" height="0.16" color="#1f2937" position="0 0.08 0.48"></a-cylinder>
+        <a-cylinder radius="0.07" height="0.16" color="#1f2937" position="0 0.08 -0.48"></a-cylinder>
+        <a-ring radius-inner="0.08" radius-outer="0.18" color="#ffe066" rotation="-90 0 0" position="0 0.2 0"
+          animation="property: rotation; to: -90 360 0; loop: true; dur: 700; easing: linear"
+        ></a-ring>
+      </a-entity>
+
+      <a-entity class="obstacle drone" data-obstacle position="-4 1.1 2"
+        geometry="primitive: sphere; radius: 0.56"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.56"
+        animation="property: position; to: 4 1.1 2; dir: alternate; loop: true; dur: 3000; easing: easeInOutSine"
+      >
+        <a-sphere radius="0.24" color="#fb7185" metalness="0.35" roughness="0.35"></a-sphere>
+        <a-box width="1.05" height="0.1" depth="0.18" color="#ef4444"></a-box>
+        <a-box width="0.18" height="0.1" depth="1.05" color="#ef4444"></a-box>
+        <a-ring radius-inner="0.08" radius-outer="0.18" color="#fde68a" rotation="-90 0 0" position="0 0.2 0"
+          animation="property: rotation; to: -90 -360 0; loop: true; dur: 700; easing: linear"
+        ></a-ring>
+      </a-entity>
+
+      <a-entity class="obstacle drone" data-obstacle position="3 1.4 6"
+        geometry="primitive: sphere; radius: 0.56"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.56"
+        animation="property: position; to: -3 1.4 6; dir: alternate; loop: true; dur: 2200; easing: easeInOutSine"
+      >
+        <a-sphere radius="0.24" color="#f87171" metalness="0.35" roughness="0.35"></a-sphere>
+        <a-box width="1.05" height="0.1" depth="0.18" color="#dc2626"></a-box>
+        <a-box width="0.18" height="0.1" depth="1.05" color="#dc2626"></a-box>
+        <a-ring radius-inner="0.08" radius-outer="0.18" color="#fde68a" rotation="-90 0 0" position="0 0.2 0"
+          animation="property: rotation; to: -90 360 0; loop: true; dur: 620; easing: linear"
+        ></a-ring>
+      </a-entity>
+
+      <a-entity class="obstacle drone" data-obstacle position="-7 1.0 -4"
+        geometry="primitive: sphere; radius: 0.56"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.56"
+        animation="property: position; to: -7 1.0 4; dir: alternate; loop: true; dur: 2800; easing: easeInOutSine"
+      >
+        <a-sphere radius="0.24" color="#fbbf24" metalness="0.35" roughness="0.35"></a-sphere>
+        <a-box width="1.05" height="0.1" depth="0.18" color="#f59e0b"></a-box>
+        <a-box width="0.18" height="0.1" depth="1.05" color="#f59e0b"></a-box>
+        <a-ring radius-inner="0.08" radius-outer="0.18" color="#fde68a" rotation="-90 0 0" position="0 0.2 0"
+          animation="property: rotation; to: -90 -360 0; loop: true; dur: 650; easing: linear"
+        ></a-ring>
+      </a-entity>
+
+      <a-entity class="obstacle drone" data-obstacle position="5 1.3 4"
+        geometry="primitive: sphere; radius: 0.56"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.56"
+        animation="property: position; to: -5 1.3 4; dir: alternate; loop: true; dur: 3200; easing: easeInOutSine"
+      >
+        <a-sphere radius="0.24" color="#a78bfa" metalness="0.35" roughness="0.35"></a-sphere>
+        <a-box width="1.05" height="0.1" depth="0.18" color="#8b5cf6"></a-box>
+        <a-box width="0.18" height="0.1" depth="1.05" color="#8b5cf6"></a-box>
+        <a-ring radius-inner="0.08" radius-outer="0.18" color="#e9d5ff" rotation="-90 0 0" position="0 0.2 0"
+          animation="property: rotation; to: -90 360 0; loop: true; dur: 580; easing: linear"
+        ></a-ring>
+      </a-entity>
+
+      <a-entity class="obstacle drone" data-obstacle position="0 1.15 5"
+        geometry="primitive: sphere; radius: 0.56"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.56"
+        animation="property: position; to: 0 1.15 -6; dir: alternate; loop: true; dur: 2400; easing: easeInOutSine"
+      >
+        <a-sphere radius="0.24" color="#34d399" metalness="0.35" roughness="0.35"></a-sphere>
+        <a-box width="1.05" height="0.1" depth="0.18" color="#10b981"></a-box>
+        <a-box width="0.18" height="0.1" depth="1.05" color="#10b981"></a-box>
+        <a-ring radius-inner="0.08" radius-outer="0.18" color="#a7f3d0" rotation="-90 0 0" position="0 0.2 0"
+          animation="property: rotation; to: -90 -360 0; loop: true; dur: 720; easing: linear"
+        ></a-ring>
+      </a-entity>
+
+      <a-entity class="obstacle drone" data-obstacle position="9 1.2 -2"
+        geometry="primitive: sphere; radius: 0.56"
+        material="opacity: 0; transparent: true"
+        static-body="shape: sphere; radius: 0.56"
+        animation="property: position; to: -9 1.2 -2; dir: alternate; loop: true; dur: 3400; easing: easeInOutSine"
+      >
+        <a-sphere radius="0.24" color="#f472b6" metalness="0.35" roughness="0.35"></a-sphere>
+        <a-box width="1.05" height="0.1" depth="0.18" color="#ec4899"></a-box>
+        <a-box width="0.18" height="0.1" depth="1.05" color="#ec4899"></a-box>
+        <a-ring radius-inner="0.08" radius-outer="0.18" color="#fbcfe8" rotation="-90 0 0" position="0 0.2 0"
+          animation="property: rotation; to: -90 360 0; loop: true; dur: 600; easing: linear"
+        ></a-ring>
+      </a-entity>
+    </a-entity>
+
+    <a-entity
+      id="status-beacon"
+      text="value: Лесной дозор активен; align: center; width: 5.5; color: #bde0fe"
+      position="0 3.1 -3"
+    ></a-entity>
+  </a-scene>
+
+  <script>
+    (function () {
+      var scene = document.getElementById("scene");
+      var player = document.getElementById("player");
+      var scoreEl = document.getElementById("score");
+      var totalEl = document.getElementById("total");
+      var statusEl = document.getElementById("status");
+      var hudScore = document.getElementById("hud-score");
+      var statusBeacon = document.getElementById("status-beacon");
+      var gameOverEl = document.getElementById("game-over");
+      var gameWinEl = document.getElementById("game-win");
+      var finalScoreLose = document.getElementById("final-score-lose");
+      var finalScoreWin = document.getElementById("final-score-win");
+      var alarmLight = document.getElementById("alarm-light");
+      var capsules = Array.prototype.slice.call(document.querySelectorAll(".capsule"));
+      var totalCapsules = capsules.length;
+      var score = 0;
+      var gameEnded = false;
+
+      var PLATFORM_HALF = 15.5;
+
+      totalEl.textContent = totalCapsules;
+
+      function updateScoreUI() {
+        scoreEl.textContent = score;
+    hudScore.setAttribute("text", "value", "Утки: " + score + " / " + totalCapsules);
+      }
+
+      function collectCapsule(capsule) {
+        if (gameEnded || !capsule || capsule.getAttribute("data-collected")) {
+          return;
+        }
+
+        capsule.setAttribute("data-collected", "true");
+        score += 1;
+        updateScoreUI();
+        statusEl.textContent = "утка спасена";
+        statusBeacon.setAttribute("text", "value", "Собрано " + score + " из " + totalCapsules + " уток");
+        scene.emit("collect");
+        capsule.emit("collected");
+
+        window.setTimeout(function () {
+          if (capsule.parentNode) {
+            capsule.parentNode.removeChild(capsule);
+          }
+        }, 260);
+
+        if (score >= totalCapsules) {
+          endGame(true);
+        }
+      }
+
+      function endGame(won, outOfBounds) {
+        if (gameEnded) {
+          return;
+        }
+
+        gameEnded = true;
+        player.setAttribute("wasd-controls", "acceleration", 0);
+        player.setAttribute("wasd-controls", "maxSpeed", 0);
+
+        if (won) {
+          gameWinEl.classList.add("show");
+          finalScoreWin.textContent = score;
+          statusEl.textContent = "маршрут очищен";
+          statusBeacon.setAttribute("text", "value", "Все утки спасены");
+          alarmLight.setAttribute("color", "#7fffb0");
+          alarmLight.setAttribute("intensity", 0.55);
+          scene.emit("gamewin");
+        } else {
+          gameOverEl.classList.add("show");
+          finalScoreLose.textContent = score;
+          statusEl.textContent = outOfBounds ? "выход за пределы зоны" : "захвачены лисой";
+          statusBeacon.setAttribute("text", "value", outOfBounds ? "Вы покинули игровую зону" : "Лис перехватил оператора");
+          alarmLight.setAttribute("color", "#ff6b6b");
+          alarmLight.setAttribute("intensity", 0.9);
+          scene.emit("gameover");
+        }
+      }
+
+      function getCapsuleFromElement(element) {
+        var current = element;
+        while (current && current !== document.body) {
+          if (current.classList && current.classList.contains("capsule")) {
+            return current;
+          }
+          current = current.parentNode;
+        }
+        return null;
+      }
+
+      function getDroneFromElement(element) {
+        var current = element;
+        while (current && current !== document.body) {
+          if (current.getAttribute && current.getAttribute("data-obstacle") !== null) {
+            return current;
+          }
+          current = current.parentNode;
+        }
+        return null;
+      }
+
+  function setupCapsuleModelFallbacks() {
+        fetch("assets/duck_collectible.glb", { cache: "no-store" })
+          .then(function (response) {
+            if (!response.ok) {
+              throw new Error("Model not found");
+            }
+            document.querySelectorAll(".capsule").forEach(function (capsule) {
+              var fallback = capsule.querySelector(".capsule-fallback");
+              var gltfSlot = capsule.querySelector(".capsule-gltf");
+              gltfSlot.setAttribute("visible", "true");
+            gltfSlot.setAttribute("gltf-model", "url(assets/duck_collectible.glb)");
+              gltfSlot.addEventListener("model-loaded", function () {
+                if (fallback) {
+                  fallback.setAttribute("visible", "false");
+                }
+              }, { once: true });
+            });
+          })
+          .catch(function () {
+        statusBeacon.setAttribute("text", "value", "Fallback-утки активны, замените модель в assets/");
+          });
+      }
+
+  function setupObstacleModels() {
+    fetch("assets/fox_hazard.glb", { cache: "no-store" })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Model not found");
+        }
+        var drones = document.querySelectorAll(".obstacle.drone");
+        for (var i = 0; i < drones.length; i++) {
+          var drone = drones[i];
+          if (drone.querySelector(".drone-gltf")) {
+            continue;
+          }
+
+          var model = document.createElement("a-entity");
+          model.setAttribute("class", "drone-gltf");
+          model.setAttribute("gltf-model", "url(assets/fox_hazard.glb)");
+          model.setAttribute("position", "0 -0.15 0");
+          model.setAttribute("scale", "0.24 0.24 0.24");
+          model.setAttribute("rotation", "0 180 0");
+          drone.appendChild(model);
+        }
+      })
+      .catch(function () {
+        statusBeacon.setAttribute("text", "value", "Fallback-объекты активны, замените fox_hazard.glb");
+      });
+  }
+
+      scene.addEventListener("loaded", function () {
+        updateScoreUI();
+        setupCapsuleModelFallbacks();
+        setupObstacleModels();
+
+        scene.addEventListener("click", function (event) {
+          var target = (event.detail && event.detail.target) ? event.detail.target : event.target;
+          var capsule = getCapsuleFromElement(target);
+          if (capsule) {
+            collectCapsule(capsule);
+            return;
+          }
+          var drone = getDroneFromElement(target);
+          if (drone) {
+            endGame(false);
+          }
+        });
+
+        player.addEventListener("collide", function (event) {
+          if (gameEnded || !event.detail || !event.detail.body) return;
+          var other = (event.detail.body.el != null) ? event.detail.body.el : scene.querySelector("#" + event.detail.body.id);
+          if (!other) return;
+
+          var capsule = getCapsuleFromElement(other);
+          if (capsule) {
+            collectCapsule(capsule);
+            return;
+          }
+
+          var className = (other.getAttribute && other.getAttribute("class")) || "";
+          if (className.indexOf("obstacle") !== -1) {
+            endGame(false);
+          }
+        });
+
+        var drones = document.querySelectorAll(".obstacle.drone");
+        var PLAYER_RADIUS = 0.5;
+        var DRONE_RADIUS = 0.56;
+        var HIT_DISTANCE = PLAYER_RADIUS + DRONE_RADIUS;
+
+        scene.addEventListener("tick", function () {
+          if (gameEnded) return;
+          var pos = player.getAttribute("position");
+          if (!pos) return;
+
+          if (Math.abs(pos.x) > PLATFORM_HALF || Math.abs(pos.z) > PLATFORM_HALF) {
+            endGame(false, true);
+            return;
+          }
+
+          for (var i = 0; i < drones.length; i++) {
+            var d = drones[i].getAttribute("position");
+            if (!d) continue;
+            var dx = pos.x - d.x, dy = pos.y - d.y, dz = pos.z - d.z;
+            if (dx * dx + dy * dy + dz * dz < HIT_DISTANCE * HIT_DISTANCE) {
+              endGame(false);
+              return;
+            }
+          }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

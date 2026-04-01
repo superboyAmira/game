@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Duck Rescue AR</title>
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-physics-system@4.0.2/dist/aframe-physics-system.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.7/aframe/build/aframe-ar.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; background: #0a0a0f; touch-action: manipulation; }
+    a-scene { touch-action: none; }
+    .arjs-loader {
+      position: absolute; inset: 0; z-index: 9999;
+      display: flex; justify-content: center; align-items: center; flex-direction: column;
+      background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+      color: #e2e8f0; font-family: "Segoe UI", system-ui, sans-serif; text-align: center; padding: 20px;
+    }
+    .arjs-loader h2 { margin: 0 0 12px; color: #7dd3fc; font-size: 1.25rem; }
+    .arjs-loader p { margin: 6px 0; max-width: 360px; font-size: 14px; color: #94a3b8; }
+    .arjs-loader a { color: #38bdf8; }
+    .ui-overlay { position: fixed; left: 0; right: 0; z-index: 10000; pointer-events: none; }
+    .ui-overlay .clickable { pointer-events: auto; }
+    .rules-bar {
+      position: fixed; top: 12px; left: 12px; right: 12px; z-index: 10000;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 14px; background: rgba(2, 6, 23, 0.9);
+      border: 1px solid rgba(125, 211, 252, 0.25); border-radius: 12px;
+      color: #e2e8f0; font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; line-height: 1.35;
+    }
+    .rules-bar .timer-display { font-weight: bold; color: #fbbf24; min-width: 3em; text-align: right; }
+    .top-bar {
+      position: fixed; top: 58px; left: 12px; right: 12px; z-index: 10000;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .score-bar {
+      padding: 10px 16px; background: rgba(2, 6, 23, 0.85);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
+      color: #e2e8f0; font-family: "Segoe UI", system-ui, sans-serif; font-size: 15px;
+    }
+    .score-bar strong { color: #7dd3fc; }
+    .gps-bar {
+      bottom: 12px; left: 12px; right: 12px; padding: 8px 12px; background: rgba(2, 6, 23, 0.85);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+      color: #94a3b8; font-family: "Segoe UI", system-ui, sans-serif; font-size: 12px;
+    }
+    .gps-bar strong { color: #7dd3fc; }
+    .back-link {
+      padding: 8px 14px; border-radius: 10px; background: rgba(2, 6, 23, 0.9);
+      border: 1px solid rgba(255,255,255,0.2); color: #fff; text-decoration: none;
+      font-family: "Segoe UI", system-ui, sans-serif; font-size: 14px;
+    }
+    .back-link:hover { background: rgba(15, 23, 42, 0.95); }
+    #game-over, #game-win {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      justify-content: center; align-items: center; flex-direction: column;
+      background: rgba(2, 5, 14, 0.92); color: #fff;
+      font-family: "Segoe UI", system-ui, sans-serif; text-align: center; padding: 24px;
+    }
+    #game-over.show, #game-win.show { display: flex; pointer-events: auto; }
+    #game-over h2 { color: #f87171; margin: 0 0 12px; font-size: 1.75rem; }
+    #game-win h2 { color: #4ade80; margin: 0 0 12px; font-size: 1.75rem; }
+    #game-over p, #game-win p { margin: 8px 0; color: #cbd5e1; font-size: 15px; }
+    #game-over a, #game-win a {
+      display: inline-block; margin-top: 16px; padding: 12px 24px; border-radius: 10px;
+      color: #fff; text-decoration: none; font-weight: 600; background: #2563eb;
+    }
+    #game-win a { background: #059669; }
+  </style>
+</head>
+<body>
+  <div class="arjs-loader" id="loader">
+    <h2>Duck Rescue AR</h2>
+    <p id="loader-msg">Разрешите доступ к камере. Вы находитесь на сцене, как в игре; фон — обстановка с камеры. Поворачивайте телефон, чтобы осмотреться.</p>
+    <p style="font-size: 13px;">Тап по утке — спасти. Не касайтесь лис. Геопозиция внизу.</p>
+    <p><a href="start.html">← Старт</a></p>
+  </div>
+  <script>
+    if (window.location.protocol === "file:") {
+      var w = document.getElementById("file-protocol-warn");
+      if (w) w.style.display = "block";
+    }
+  </script>
+
+  <div class="ui-overlay rules-bar">
+    <span class="rules-text">Собери 6 уток за 40 секунд, не подпусти лис</span>
+    <span class="timer-display" id="timer">40</span>
+  </div>
+  <div class="ui-overlay top-bar">
+    <div class="score-bar">
+      Капсулы: <strong><span id="score">0</span></strong> / <strong><span id="total">6</span></strong>
+    </div>
+    <a href="start.html" class="back-link clickable">← Старт</a>
+  </div>
+
+  <div class="ui-overlay" style="bottom: 0;">
+    <div class="gps-bar">
+      <strong>Геопозиция:</strong> <span id="gps-text">—</span>
+    </div>
+  </div>
+
+  <div id="game-over">
+    <h2>Поражение</h2>
+    <p id="game-over-reason">Вы нажали на лису. Соберите 6 уток и не касайтесь хищника.</p>
+    <p>Спасено уток: <strong><span id="final-score-lose">0</span></strong></p>
+    <a href="ar.html" class="clickable">Заново</a>
+  </div>
+  <div id="game-win">
+    <h2>Победа</h2>
+    <p>Все 6 уток спасены, выход на базу открыт.</p>
+    <a href="ar.html" class="clickable">Играть ещё</a>
+  </div>
+
+  <a-scene
+    id="ar-scene"
+    vr-mode-ui="enabled: false"
+    renderer="antialias: true; alpha: true"
+    physics="driver: cannon; gravity: 0"
+    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
+  >
+    <a-assets timeout="10000">
+      <img id="groundTex" src="assets/space-floor.svg">
+      <img id="skyTex" src="assets/starfield.svg">
+      <audio id="collectSound" src="https://cdn.aframe.io/aframe/examples/primitives/click.ogg" preload="auto"></audio>
+      <audio id="loseSound" src="https://cdn.aframe.io/basic-guide/audio/backgroundnoise.wav" preload="auto"></audio>
+      <audio id="winSound" src="https://cdn.aframe.io/360-image-gallery-boilerplate/audio/click.ogg" preload="auto"></audio>
+    </a-assets>
+    <a-sky src="#skyTex" material="opacity: 0; transparent: true" rotation="0 -90 0"></a-sky>
+    <a-entity id="sound-collect" sound="src: #collectSound; on: collect"></a-entity>
+    <a-entity id="sound-lose" sound="src: #loseSound; on: gameover"></a-entity>
+    <a-entity id="sound-win" sound="src: #winSound; on: gamewin"></a-entity>
+    <a-entity
+      id="ar-camera"
+      camera="near: 0.1; far: 2000"
+      look-controls="pointerLockEnabled: false"
+      position="0 1.8 0"
+      cursor="rayOrigin: mouse; fuse: false; fuseTimeout: 0"
+      raycaster="objects: .capsule-collect, .drone-avoid; far: 500; recursive: true; interval: 0"
+    ></a-entity>
+
+    <a-entity id="game-world" position="0 0 0" scale="0.35 0.35 0.35">
+
+      <a-entity text="value: Соберите 6 уток; align: center; width: 4; color: #8be9fd" position="0 1.5 -3"></a-entity>
+
+      <a-light type="ambient" intensity="0.7" color="#c8dcff"></a-light>
+      <a-light type="directional" position="6 9 3" intensity="0.9" color="#ffffff"></a-light>
+      <a-light type="point" position="0 6 0" intensity="0.7" color="#7fd3ff"></a-light>
+
+      <a-entity id="world-capsules"></a-entity>
+
+      <a-entity id="drones-orbit" position="0 0 0" animation="property: rotation; to: 0 360 0; loop: true; dur: 22000; easing: linear">
+        <a-entity class="drone-avoid" scale="2.22 2.22 2.22" position="0 0.5 -5">
+          <a-sphere radius="0.55" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
+          <a-sphere radius="0.24" color="#ff7b54" metalness="0.35" roughness="0.35"></a-sphere>
+          <a-box width="1.05" height="0.1" depth="0.18" color="#f97316"></a-box>
+          <a-box width="0.18" height="0.1" depth="1.05" color="#f97316"></a-box>
+          <a-ring radius-inner="0.08" radius-outer="0.18" color="#ffe066" rotation="-90 0 0" position="0 0.2 0" animation="property: rotation; to: -90 360 0; loop: true; dur: 700; easing: linear"></a-ring>
+        </a-entity>
+        <a-entity class="drone-avoid" scale="2.22 2.22 2.22" position="4.33 0.5 2.5">
+          <a-sphere radius="0.55" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
+          <a-sphere radius="0.24" color="#fb7185" metalness="0.35" roughness="0.35"></a-sphere>
+          <a-box width="1.05" height="0.1" depth="0.18" color="#ef4444"></a-box>
+          <a-box width="0.18" height="0.1" depth="1.05" color="#ef4444"></a-box>
+          <a-ring radius-inner="0.08" radius-outer="0.18" color="#fde68a" rotation="-90 0 0" position="0 0.2 0" animation="property: rotation; to: -90 -360 0; loop: true; dur: 700; easing: linear"></a-ring>
+        </a-entity>
+        <a-entity class="drone-avoid" scale="2.22 2.22 2.22" position="-4.33 0.5 2.5">
+          <a-sphere radius="0.55" material="opacity: 0.001; transparent: true; visible: true" class="hit-area"></a-sphere>
+          <a-sphere radius="0.24" color="#f87171" metalness="0.35" roughness="0.35"></a-sphere>
+          <a-box width="1.05" height="0.1" depth="0.18" color="#dc2626"></a-box>
+          <a-box width="0.18" height="0.1" depth="1.05" color="#dc2626"></a-box>
+          <a-ring radius-inner="0.08" radius-outer="0.18" color="#fde68a" rotation="-90 0 0" position="0 0.2 0" animation="property: rotation; to: -90 360 0; loop: true; dur: 620; easing: linear"></a-ring>
+        </a-entity>
+      </a-entity>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    (function () {
+      var loader = document.getElementById("loader");
+      var scoreEl = document.getElementById("score");
+      var totalEl = document.getElementById("total");
+      var gpsText = document.getElementById("gps-text");
+      var gameOverEl = document.getElementById("game-over");
+      var gameWinEl = document.getElementById("game-win");
+      var finalScoreLose = document.getElementById("final-score-lose");
+      var scene = document.querySelector("a-scene");
+      var camera = document.getElementById("ar-camera");
+      var totalCapsules = 6;
+      var score = 0;
+      var gameEnded = false;
+      var watchId = null;
+      var capsuleCount = 0;
+      var CAPSULE_RESPAWN_DELAY = 3000;
+      var GAME_DURATION = 40;
+      var timeLeft = 40;
+      var timerId = null;
+      var worldCapsulesContainer = null;
+      var glbLoaded = false;
+      var gameOverReasonEl = document.getElementById("game-over-reason");
+      var timerEl = document.getElementById("timer");
+
+      if (timerEl) timerEl.textContent = GAME_DURATION + " с";
+      startTimer();
+
+      function makeCapsule(container) {
+        if (glbLoaded) {
+          var slot = el.querySelector(".capsule-gltf");
+          var vis = el.querySelector(".capsule-visual");
+          if (slot) {
+            slot.setAttribute("visible", "true");
+            slot.setAttribute("gltf-model", "url(assets/duck_collectible.glb)");
+            slot.addEventListener("model-loaded", function () {
+              if (vis) vis.setAttribute("visible", "false");
+            }, { once: true });
+          }
+        }
+      }
+
+      function hideLoader() {
+        if (loader) loader.style.display = "none";
+      }
+      window.addEventListener("arjs-source-ready", hideLoader);
+      window.addEventListener("arjs-error", function () { hideLoader(); });
+      setTimeout(hideLoader, 8000);
+
+      function updateScore() {
+        if (scoreEl) scoreEl.textContent = score;
+        if (totalEl) totalEl.textContent = totalCapsules;
+      }
+
+      function startTimer() {
+        timeLeft = GAME_DURATION;
+        if (timerEl) timerEl.textContent = timeLeft + " с";
+        timerId = setInterval(function () {
+          if (gameEnded) return;
+          timeLeft -= 1;
+          if (timerEl) timerEl.textContent = timeLeft + " с";
+          if (timeLeft <= 0) {
+            clearInterval(timerId);
+            timerId = null;
+            endGameByTimeout();
+          }
+        }, 1000);
+      }
+
+      function stopTimer() {
+        if (timerId) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+      }
+
+      function endGameByTimeout() {
+        if (gameEnded) return;
+        gameEnded = true;
+        stopTimer();
+        if (gameOverReasonEl) gameOverReasonEl.textContent = "Время вышло. Спасите 6 уток за " + GAME_DURATION + " секунд.";
+        if (finalScoreLose) finalScoreLose.textContent = score;
+        if (gameOverEl) gameOverEl.classList.add("show");
+        scene.emit("gameover");
+      }
+
+      function updateGps(lat, lng) {
+        if (!gpsText) return;
+        if (lat == null || lng == null) {
+          gpsText.textContent = "нет данных";
+          return;
+        }
+        gpsText.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
+      }
+
+      function getCapsule(el) {
+        var cur = el;
+        while (cur && cur !== document.body) {
+          if (cur.classList && cur.classList.contains("capsule-collect")) return cur;
+          cur = cur.parentNode;
+        }
+        return null;
+      }
+      function getDrone(el) {
+        var cur = el;
+        while (cur && cur !== document.body) {
+          if (cur.classList && cur.classList.contains("drone-avoid")) return cur;
+          cur = cur.parentNode;
+        }
+        return null;
+      }
+
+      function collectCapsule(capsule) {
+        if (gameEnded || !capsule || capsule.getAttribute("data-collected")) return;
+        capsule.setAttribute("data-collected", "true");
+        score += 1;
+        updateScore();
+        scene.emit("collect");
+        capsule.setAttribute("animation", "property: scale; to: 0.01 0.01 0.01; dur: 200");
+        setTimeout(function () {
+          if (capsule.parentNode) capsule.parentNode.removeChild(capsule);
+        }, 220);
+        if (score >= totalCapsules) {
+          gameEnded = true;
+          stopTimer();
+          scene.emit("gamewin");
+          if (gameWinEl) gameWinEl.classList.add("show");
+        } else if (!gameEnded && worldCapsulesContainer) {
+          setTimeout(function () {
+            if (gameEnded) return;
+            makeCapsule(worldCapsulesContainer);
+          }, CAPSULE_RESPAWN_DELAY);
+        }
+      }
+
+      function loseGame() {
+        if (gameEnded) return;
+        gameEnded = true;
+        stopTimer();
+        scene.emit("gameover");
+        if (gameOverReasonEl) gameOverReasonEl.textContent = "Вы нажали на лису. Спасите 6 уток и избегайте хищников.";
+        if (finalScoreLose) finalScoreLose.textContent = score;
+        if (gameOverEl) gameOverEl.classList.add("show");
+      }
+
+      function handleIntersection(target) {
+        if (!target) return;
+        var capsule = getCapsule(target);
+        if (capsule) {
+          collectCapsule(capsule);
+          return;
+        }
+        var drone = getDrone(target);
+        if (drone) loseGame();
+      }
+
+      function getEntityFromObject3D(obj) {
+        while (obj) {
+          if (obj.el) return obj.el;
+          obj = obj.parent;
+        }
+        return null;
+      }
+
+      var pointerHandlerBound = false;
+      function setupPointerHandler() {
+        if (pointerHandlerBound) return;
+        var scene3D = scene.object3D;
+        var canvas = scene.canvas || (scene.renderer && scene.renderer.domElement);
+        if (!canvas || !scene3D || typeof THREE === "undefined") {
+          setTimeout(setupPointerHandler, 200);
+          return;
+        }
+        var mouse = new THREE.Vector2();
+        var raycaster = new THREE.Raycaster();
+
+        function onPointer(ev) {
+          if (gameEnded) return;
+          var clientX = ev.clientX != null ? ev.clientX : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : (ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0].clientX : 0));
+          var clientY = ev.clientY != null ? ev.clientY : (ev.touches && ev.touches[0] ? ev.touches[0].clientY : (ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0].clientY : 0));
+          var rect = canvas.getBoundingClientRect();
+          mouse.x = (clientX - rect.left) / rect.width * 2 - 1;
+          mouse.y = -(clientY - rect.top) / rect.height * 2 + 1;
+
+          var camComp = camera.components && camera.components.camera;
+          if (!camComp || !camComp.camera) return;
+          var threeCamera = camComp.camera;
+          raycaster.setFromCamera(mouse, threeCamera);
+          var intersects = raycaster.intersectObject(scene3D, true);
+          for (var i = 0; i < intersects.length; i++) {
+            var el = getEntityFromObject3D(intersects[i].object);
+            if (!el) continue;
+            var capsule = getCapsule(el);
+            if (capsule) {
+              handleIntersection(el);
+              if (ev.preventDefault) ev.preventDefault();
+              return;
+            }
+            var drone = getDrone(el);
+            if (drone) {
+              handleIntersection(el);
+              if (ev.preventDefault) ev.preventDefault();
+              return;
+            }
+          }
+        }
+
+        canvas.addEventListener("click", onPointer, false);
+        canvas.addEventListener("touchstart", onPointer, { passive: false });
+        canvas.addEventListener("touchend", onPointer, { passive: false });
+        pointerHandlerBound = true;
+      }
+
+      scene.addEventListener("loaded", function () {
+        updateScore();
+        setupPointerHandler();
+
+        worldCapsulesContainer = document.getElementById("world-capsules");
+        if (worldCapsulesContainer) {
+          makeCapsule(worldCapsulesContainer);
+        }
+
+        if (navigator.geolocation) {
+          updateGps(null, null);
+          watchId = navigator.geolocation.watchPosition(
+            function (pos) {
+              updateGps(pos.coords.latitude, pos.coords.longitude);
+            },
+            function () {
+              updateGps(null, null);
+            },
+            { enableHighAccuracy: true, maximumAge: 5000 }
+          );
+        } else {
+          if (gpsText) gpsText.textContent = "геолокация недоступна";
+        }
+
+        fetch("assets/duck_collectible.glb", { cache: "no-store" })
+          .then(function (r) {
+            if (!r.ok) throw new Error("not found");
+            glbLoaded = true;
+            document.querySelectorAll(".capsule-collect").forEach(function (cap) {
+              var gltf = cap.querySelector(".capsule-gltf");
+              var visual = cap.querySelector(".capsule-visual");
+              if (gltf) {
+                gltf.setAttribute("visible", "true");
+                gltf.setAttribute("gltf-model", "url(assets/duck_collectible.glb)");
+                gltf.addEventListener("model-loaded", function () {
+                  if (visual) visual.setAttribute("visible", "false");
+                }, { once: true });
+              }
+            });
+          })
+          .catch(function () {});
+      });
+    })();
+  </script>
+</body>
+</html>

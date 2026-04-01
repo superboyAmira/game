@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Duck Rescue — Старт</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(96, 165, 250, 0.2), transparent 28%),
+        linear-gradient(160deg, #020617 0%, #0f172a 48%, #111827 100%);
+      color: #e5eefc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    h1 {
+      font-size: clamp(2rem, 6vw, 3.1rem);
+      margin: 0 0 8px;
+      background: linear-gradient(90deg, #7dd3fc, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      margin: 0 0 14px;
+      color: #cbd5e1;
+      text-align: center;
+      max-width: 700px;
+    }
+    .legend {
+      margin: 0 0 28px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #bfd5ff;
+      font-size: 14px;
+    }
+    .cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: center;
+      width: min(100%, 860px);
+    }
+    .card {
+      flex: 1 1 280px;
+      min-width: 280px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 18px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      color: #7dd3fc;
+      font-size: 1.25rem;
+    }
+    .card.ar h2 { color: #c084fc; }
+    .card p {
+      min-height: 46px;
+      color: #cbd5e1;
+      font-size: 0.95rem;
+      margin: 0 0 18px;
+    }
+    .qrcode {
+      width: 190px;
+      height: 190px;
+      margin: 0 auto 18px;
+      background: #fff;
+      border-radius: 14px;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qrcode img { max-width: 100%; max-height: 100%; display: block; }
+    .btn {
+      display: inline-block;
+      padding: 11px 22px;
+      border-radius: 10px;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      background: linear-gradient(90deg, #0ea5e9, #2563eb);
+    }
+    .card.ar .btn { background: linear-gradient(90deg, #9333ea, #6d28d9); }
+    .hint {
+      margin-top: 28px;
+      max-width: 680px;
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 16px 18px;
+      color: #cbd5e1;
+      line-height: 1.55;
+    }
+  </style>
+</head>
+<body>
+  <h1>Duck Rescue</h1>
+  <p class="subtitle">Мини-игра на A-Frame: находите уток в лесу и избегайте лис-перехватчиков.</p>
+    <div class="legend">Есть 3D-игра и AR по геолокации (GPS): утки и лисы появляются в точках вокруг вас.</div>
+
+  <div class="cards">
+    <div class="card">
+      <h2>Игра</h2>
+      <p>Собирайте все утки, двигайтесь по полянке и не сталкивайтесь с лисами.</p>
+      <div class="qrcode" id="qr-game"><span style="color:#64748b;">Загрузка...</span></div>
+      <a href="index.html" class="btn">Играть на этом устройстве</a>
+    </div>
+
+    <div class="card ar">
+      <h2>AR по геолокации (GPS)</h2>
+      <p>Разрешите камеру и геолокацию. Спасите 6 уток, не нажимайте на лис.</p>
+      <div class="qrcode" id="qr-ar"><span style="color:#64748b;">Загрузка...</span></div>
+      <a href="ar.html" class="btn">Открыть AR здесь</a>
+    </div>
+  </div>
+
+  <script>
+    function baseUrl() {
+      var origin = window.location.origin;
+      var path = window.location.pathname;
+      if (path.endsWith("start.html")) path = path.replace(/\/start\.html$/, "");
+      else if (path.endsWith("/")) path = path.slice(0, -1);
+      else path = path.replace(/\/[^/]*$/, "");
+      return origin + path;
+    }
+
+    function drawQr(elId, url) {
+      var el = document.getElementById(elId);
+      if (!el) return;
+      el.innerHTML = "";
+      try {
+        new QRCode(el, {
+          text: url,
+          width: 200,
+          height: 200,
+          colorDark: "#000000",
+          colorLight: "#ffffff"
+        });
+      } catch (e) {
+        el.innerHTML = '<span style="color:#ef4444;">Ошибка: ' + (e.message || e) + '</span>';
+      }
+    }
+
+    function initQrCodes() {
+      var base = baseUrl();
+      if (base.indexOf("file://") === 0) {
+        document.querySelectorAll(".qrcode").forEach(function (el) {
+          if (el.id === "qr-game" || el.id === "qr-ar") {
+            el.innerHTML = '<span style="color:#f59e0b; font-size: 14px;">Откройте через сервер (npx serve .)</span>';
+          }
+        });
+        return;
+      }
+      drawQr("qr-game", base + "/index.html");
+      drawQr("qr-ar", base + "/ar.html");
+    }
+
+    if (document.readyState === "complete") {
+      initQrCodes();
+    } else {
+      window.addEventListener("load", initQrCodes);
+    }
+  </script>
+</body>
+</html>
