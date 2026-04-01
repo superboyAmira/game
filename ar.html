@@ -4,8 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>Duck Rescue AR</title>
-  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/aframe-physics-system@4.0.2/dist/aframe-physics-system.min.js"></script>
+  <script src="vendor/aframe.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; overflow: hidden; background: #0a0a0f; touch-action: manipulation; }
@@ -22,10 +21,13 @@
       object-fit: cover;
       background: #000;
       visibility: hidden;
+      opacity: 0;
+      transition: opacity 0.2s ease;
     }
     #ar-scene {
       z-index: 1;
-      visibility: hidden;
+      opacity: 0;
+      transition: opacity 0.2s ease;
     }
     #ar-scene canvas {
       background: transparent !important;
@@ -188,24 +190,15 @@
     embedded
     vr-mode-ui="enabled: false"
     renderer="antialias: true; alpha: true"
-    physics="driver: cannon; gravity: 0"
     device-orientation-permission-ui="enabled: false"
   >
-    <a-assets timeout="10000">
-      <audio id="collectSound" src="https://cdn.aframe.io/aframe/examples/primitives/click.ogg" preload="auto"></audio>
-      <audio id="loseSound" src="https://cdn.aframe.io/basic-guide/audio/backgroundnoise.wav" preload="auto"></audio>
-      <audio id="winSound" src="https://cdn.aframe.io/360-image-gallery-boilerplate/audio/click.ogg" preload="auto"></audio>
-    </a-assets>
-    <a-entity id="sound-collect" sound="src: #collectSound; on: collect"></a-entity>
-    <a-entity id="sound-lose" sound="src: #loseSound; on: gameover"></a-entity>
-    <a-entity id="sound-win" sound="src: #winSound; on: gamewin"></a-entity>
     <a-entity
       id="ar-camera"
       camera="near: 0.1; far: 2000"
       look-controls="pointerLockEnabled: false; magicWindowTrackingEnabled: true; mouseEnabled: false; touchEnabled: true"
       position="0 1.6 0"
       cursor="rayOrigin: mouse; fuse: false; fuseTimeout: 0"
-      raycaster="objects: .capsule-collect, .drone-avoid; far: 500; recursive: true; interval: 0"
+      raycaster="objects: .capsule-collect, .drone-avoid; far: 500; interval: 0"
     ></a-entity>
 
     <a-entity id="game-world" position="0 0 0" scale="0.35 0.35 0.35">
@@ -435,6 +428,7 @@
           if (cameraFeed.pause) cameraFeed.pause();
           cameraFeed.srcObject = null;
           cameraFeed.style.visibility = "hidden";
+          cameraFeed.style.opacity = "0";
         }
       }
 
@@ -503,10 +497,6 @@
 
       function requestPermissionsAndStart() {
         if (permissionRequestInFlight || permissionsGranted) return;
-        if (!scene || !scene.hasLoaded) {
-          setPermissionError("Сцена еще загружается. Повторите через секунду.");
-          return;
-        }
 
         permissionRequestInFlight = true;
         setPermissionError("");
@@ -613,6 +603,7 @@
             cameraFeed.setAttribute("webkit-playsinline", "true");
             cameraFeed.srcObject = stream;
             cameraFeed.style.visibility = "visible";
+            cameraFeed.style.opacity = "1";
 
             updatePermissionState("camera", "ok", "Разрешена");
             updatePermissionState("ar", "pending", "Запускаем");
@@ -633,7 +624,7 @@
           })
           .then(function () {
             cameraReady = true;
-            if (scene) scene.style.visibility = "visible";
+            if (scene) scene.style.opacity = "1";
             updatePermissionState("ar", "ok", "Готова");
             refreshLookControls();
             startGameIfReady();
@@ -969,8 +960,11 @@
         if (gameStarted || !permissionsGranted || !sceneLoaded || !cameraReady) return;
 
         gameStarted = true;
-        if (cameraFeed) cameraFeed.style.visibility = "visible";
-        scene.style.visibility = "visible";
+        if (cameraFeed) {
+          cameraFeed.style.visibility = "visible";
+          cameraFeed.style.opacity = "1";
+        }
+        scene.style.opacity = "1";
         if (loader) loader.style.display = "none";
         setPermissionButtonState(true, "Игра идет");
         updateScore();
